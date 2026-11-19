@@ -51,7 +51,7 @@ public static class Snapshot
             {
                 foreach (var (s, i) in group)
                     rows.Add(new RowView(group.Key, name, Amount(s), (double)Amount(s) * mass, i,
-                        s.HasMetaData ? s.MetaData!.GetShortValueString() : null));
+                        State(world, s)));
                 continue;
             }
             decimal total = group.Sum(x => Amount(x.s));
@@ -61,4 +61,9 @@ public static class Snapshot
     }
 
     static decimal Amount(ItemStack s) => (decimal)s.Amount.Value!;
+
+    static string? State(World world, ItemStack s) =>
+        !s.HasMetaData ? null
+        : StackStates.For(world.Content, s) is { } codec ? codec.Describe(s)
+        : s.MetaData!.GetShortValueString();
 }

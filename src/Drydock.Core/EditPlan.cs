@@ -79,8 +79,10 @@ public sealed class EditPlan(World world)
         {
             case CopyState copy when Stack(copy.Inventory, copy.Stack).Definition != add.Item:
                 throw new ArgumentException("the stack to copy is a different item.");
-            case ValueState:
-                throw new NotSupportedException("this item's state can't be set, use New or Copy.");
+            case ValueState value:
+                var (codec, template) = ValueCodec(add.Item);
+                codec.Encode(World.Archive, template, value.Value);
+                break;
         }
         int i = _edits.FindIndex(e => e is AddStacks a && a.Inventory == add.Inventory && a.Item == add.Item && a.State == add.State);
         if (i >= 0)
@@ -95,6 +97,15 @@ public sealed class EditPlan(World world)
         || (edit is SetTotal s && e is SetTotal t && s.Inventory == t.Inventory && s.Item == t.Item));
 
     public void Clear() => _edits.Clear();
+
+    /// <summary>The codec for an item's state and the stack in the save that new stacks are made from.</summary>
+    public (IStackState Codec, ItemStack Template) ValueCodec(Guid item)
+    {
+        var template = World.Inventories.SelectMany(i => i.Items).FirstOrDefault(s => s.Definition == item && s.HasMetaData);
+        if (template != null && StackStates.For(World.Content, template) is { } codec)
+            return (codec, template);
+        throw new NotSupportedException("this item's state can't be set, use New or Copy.");
+    }
 
     void RequireState(Guid item)
     {
@@ -131,6 +142,7 @@ public sealed class EditPlan(World world)
                     var bytes = add.State switch
                     {
                         CopyState copy => editor.StackBytes(Stack(copy.Inventory, copy.Stack)),
+                        ValueState value when ValueCodec(add.Item) is var (codec, template) => codec.Encode(World.Archive, template, value.Value),
                         _ => ItemCodec.Stack(add.Item, 1),
                     };
                     editor.AddStacks(inventory, add.Item, add.Count, bytes);
