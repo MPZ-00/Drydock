@@ -45,6 +45,8 @@ public sealed partial class World
     public World WithArchive(SaveArchive edited) =>
         new(Path, edited, Content, PlayerOwner, LoadedLength, LoadedWriteTimeUtc);
 
+    internal World WithoutOwner() => new(Path, Archive, Content, null, LoadedLength, LoadedWriteTimeUtc);
+
     // grid positions survive the game saving, walk order does not
     static Dictionary<Inventory, string> Label(GameContent content, IReadOnlyList<Inventory> inventories)
     {
