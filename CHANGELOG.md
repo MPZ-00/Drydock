@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0 (2026-11-20)
+Adds a Windows app next to the command line tool.
+
+- Portable app: unzip and run `Drydock.exe`, nothing gets installed
+- Inventories in a tree by ship or station, block and slot, with a filter and "show all" for other grids and empty inventories
+- Edit totals in place, remove single stacks and add items. Changes stay pending until you save, with weight and stack bars showing where the inventory ends up
+- Power cells, modules and guns get a row per stack. New ones start new, as a copy of a stack you pick, empty, or at a charge or ammo count you type
+- Amounts take either decimal mark, so `1,5` and `1.5` both work
+- Save refuses while the game runs, offers a reload when the game saved the world in the meantime, and lists every change past the game's limits before writing anyway
+- Backups now hold all files at the top of the save folder, not only `savegame.vrb`, and the newest 20 per save are kept. This applies to the command line tool too
+- Backups window to put a backup back, which backs up the current state first. Works for a save that no longer loads
+- Light, dark or system theme, settings in `%LocalAppData%\Drydock\settings.json` with an optional `settings.json` next to the exe that overrides it
+- Command line: over-capacity messages for block inventories no longer crash
+
 ## 0.1.0 (2026-11-20)
 First release, a command line tool.
 

@@ -6,7 +6,6 @@
     <UseWPF>true</UseWPF>
     <AssemblyName>Drydock</AssemblyName>
     <RootNamespace>Drydock.App</RootNamespace>
-    <Version>0.2.0</Version>
     <!-- ThemeMode (the Fluent light/dark theme) is marked experimental in .NET 9 -->
     <NoWarn>$(NoWarn);WPF0001</NoWarn>
   </PropertyGroup>
