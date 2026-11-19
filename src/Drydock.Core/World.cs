@@ -82,6 +82,12 @@ public sealed partial class World
 
     public InventoryRules? Rules(Inventory inv) => Content.Rules(inv.Composite, inv.Slot);
 
+    /// <summary>Whether stacks of this item carry their own data (charge, ammo, datapad content) anywhere in the save.</summary>
+    public bool HasState(Guid item) =>
+        (_stateful ??= Inventories.SelectMany(i => i.Items).Where(s => s.HasMetaData).Select(s => s.Definition).ToHashSet()).Contains(item);
+
+    HashSet<Guid>? _stateful;
+
     public double Mass(Inventory inv) =>
         inv.Items.Sum(s => (double)(decimal)s.Amount.Value! * (Content.Items.Find(s.Definition)?.MassPerUnit ?? 0));
 }
