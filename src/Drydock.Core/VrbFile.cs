@@ -6,7 +6,6 @@ namespace Drydock.Core;
 
 /// <summary>
 /// The raw VR3B container: header, entry table and checksums. Used to swap the main chunk without touching anything else.
-/// See docs/vrb-format.md.
 /// </summary>
 public sealed class VrbFile
 {
@@ -103,8 +102,8 @@ public sealed class VrbFile
 
     static byte[] Brotli(byte[] payload)
     {
-        // same settings the Python tool used, the game loaded those fine
-        using var encoder = new BrotliEncoder(quality: 11, window: 22);
+        // quality 11 takes ~14s on a 12 MB save, 9 takes 0.1s for an 11% larger file
+        using var encoder = new BrotliEncoder(quality: 9, window: 22);
         var buffer = new byte[BrotliEncoder.GetMaxCompressedLength(payload.Length)];
         var status = encoder.Compress(payload, buffer, out _, out int written, isFinalBlock: true);
         if (status != System.Buffers.OperationStatus.Done)
