@@ -27,7 +27,7 @@ public sealed partial class World
         _blockLabels = Label(content, Inventories);
     }
 
-    /// <summary>Wraps an archive already read from <paramref name="path"/>.</summary>
+    /// <summary>Wraps an archive already read from <paramref name="path"/>. <paramref name="loadedFile"/> must be refreshed before reading.</summary>
     public static World From(string path, SaveArchive archive, GameContent content, FileInfo loadedFile)
     {
         var inventories = Inventory.FindAll(archive);

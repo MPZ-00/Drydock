@@ -19,6 +19,7 @@ static class Commands
     {
         var path = ResolveSave(save);
         var file = new FileInfo(path);
+        file.Refresh();
         var archive = Status.Step("Reading save", () => SaveArchive.Load(path));
         var content = Status.Step("Reading game content", () => GameContent.Load(GameInstall.RootDir));
         return World.From(path, archive, content, file);
