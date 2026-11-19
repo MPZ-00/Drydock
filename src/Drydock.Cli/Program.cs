@@ -14,7 +14,7 @@ static class Program
           items [query]                                    list item definitions, optionally filtered
           inventories <save> [<target>] [--all]            list your inventories, or show what a target holds
           set <save> <target> <item> <amount> [--dry-run]  make the inventory hold exactly this amount, 0 removes it
-                                                           --force puts an item where the game would not accept it
+                                                           --force overrides slot and capacity limits
           add <save> <target> <item> <amount> [--dry-run]  add an item, topping up an existing stack
           remove <save> <target> <item> [--dry-run]        remove every stack of an item
 
@@ -36,7 +36,7 @@ static class Program
         var argList = args.ToList();
         string? gameDir = TakeOption(argList, "--game-dir");
 
-        // checked before anything loads, the game and a save parse together make the PC crawl
+        // before loading anything, parsing while the game runs is slow
         bool writes = argList.FirstOrDefault() is "set" or "add" or "remove" && !argList.Contains("--dry-run");
         if (writes && SaveWriter.GameRunning())
         {

@@ -14,7 +14,7 @@ public sealed record InventoryRules(string[] Types, Guid[] Items, double? MaxMas
 /// <summary>What Drydock reads from the game's content folder: item definitions, localized texts and inventory slots.</summary>
 public sealed partial class GameContent
 {
-    // what is pulled out of the ~19k .def files, cached because reading them is most of a cold start
+    // reading ~19k .def files dominates a cold start
     sealed record Snapshot(
         string Stamp,
         List<ItemInfo> Items,
@@ -56,7 +56,7 @@ public sealed partial class GameContent
         return new GameContent(snapshot, texts);
     }
 
-    // changes with every game update, which is the only time content changes
+    // content only changes with game updates
     static string Stamp(string content, string language)
     {
         var sets = new FileInfo(Path.Combine(content, "definitionsets.vrb"));
@@ -104,7 +104,7 @@ public sealed partial class GameContent
                 continue;
             var guid = Guid.Parse(match.Groups[1].Value);
             files.TryAdd(guid, file);
-            // composite definitions name their components, which is the only place inventory slots get a name
+            // the only place slots get a name
             if (text.Contains("\"$Key\"", StringComparison.Ordinal))
                 foreach (Match m in SlotKey().Matches(text))
                 {
@@ -131,7 +131,7 @@ public sealed partial class GameContent
             bases);
     }
 
-    // one component can be named twice, the smelter's output is also its "InventoryStockpile"; the specific name wins
+    // the smelter's output is also keyed InventoryStockpile
     static int KeyRank(string key) => key switch { "InventoryStockpile" => 2, "Inventory" => 1, _ => 0 };
 
     /// <summary>Component key to definition, from a composite's list or its delta form (Keys plus Changed by index).</summary>

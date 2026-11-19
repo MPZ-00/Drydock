@@ -66,7 +66,7 @@ static class Commands
         return new World(path, archive, content, inventories, Inventory.PlayerOwnerId(inventories));
     }
 
-    // numbered by position on the grid, so the numbers only shift when a block of that name is built or removed
+    // grid positions survive the game saving, walk order does not
     static Dictionary<Inventory, string> Label(GameContent content, IReadOnlyList<Inventory> inventories)
     {
         var labels = new Dictionary<Inventory, string>(ReferenceEqualityComparer.Instance);
@@ -154,7 +154,7 @@ static class Commands
     static void PrintInventory(World w, int number, Inventory inv)
     {
         var rules = RulesOf(w, inv);
-        var mass = $"{Mass(w, inv):0.##}{(rules?.MaxMass is { } max ? $"/{max:0.##}" : "")} kg";
+        var mass = $"{Mass(w, inv):0.##}{(rules?.MaxMass is { } max ? $"/{max:0.##}" : "")}kg";
         var stacks = $"{inv.Items.Count}{(rules?.MaxStacks is { } most ? $"/{most}" : "")} stacks";
         Console.WriteLine($"#{number}  {Ref(w, inv)}  ({mass}, {stacks})");
         foreach (var stack in inv.Items)
@@ -225,7 +225,7 @@ static class Commands
         bool? Accepts(int i) => w.Content.Rules(w.Inventories[i].Composite, w.Inventories[i].Slot)?.Accepts(item);
 
         var matches = Match(w, target);
-        // "player" or a block with input and output: pick the slot that takes the item unless one is named
+        // no slot named: let the game's whitelists pick
         if (matches.Count > 1 && !target.Contains(':'))
         {
             var accepting = matches.Where(i => Accepts(i) == true).ToList();
@@ -256,13 +256,12 @@ static class Commands
         var inventory = w.Inventories[n];
         if (kind != EditKind.Remove && amount > 0 && Accepts(n) == false && !force)
         {
-            // the other slots of the same block, like a smelter's input when the output was named
-            var other = Enumerable.Range(0, w.Inventories.Count).FirstOrDefault(i => i != n && Accepts(i) == true
+            var sameBlockSlot = Enumerable.Range(0, w.Inventories.Count).FirstOrDefault(i => i != n && Accepts(i) == true
                 && ReferenceEquals(w.Inventories[i].Object, inventory.Object) && w.Inventories[i].Position == inventory.Position
                 && w.Inventories[i].Block == inventory.Block, -1);
             return Fail($"{Ref(w, inventory)} doesn't take {item.Name}."
-                + (other >= 0 ? $" Use \"{Ref(w, w.Inventories[other])}\" instead." : "")
-                + " --force writes it anyway.");
+                + (sameBlockSlot >= 0 ? $" It goes in \"{Ref(w, w.Inventories[sameBlockSlot])}\"." : "")
+                + " Use --force to override it.");
         }
 
         var editor = new SaveEditor(w.Archive, w.Content.Items);
@@ -300,8 +299,8 @@ static class Commands
         if (OverCapacity(w, inventory, after.Inventories[n]) is { } problem)
         {
             if (!force)
-                return Fail($"{problem} --force writes it anyway.");
-            Console.WriteLine($"{problem} Writing anyway because of --force.");
+                return Fail($"{problem} Use --force to override it.");
+            Console.WriteLine($"{problem} Overridden by --force.");
         }
         if (dryRun)
         {
@@ -332,9 +331,9 @@ static class Commands
             return null;
         double massBefore = Mass(w, before), massAfter = Mass(w, after);
         if (rules.MaxMass is { } maxMass && massAfter > maxMass && massAfter > massBefore)
-            return $"That's {massAfter:0.##} kg, {Ref(w, after)} holds {maxMass:0.##} kg.";
+            return $"{Ref(w, after)} holds {maxMass:0.##}kg max.";
         if (rules.MaxStacks is { } maxStacks && after.Items.Count > maxStacks && after.Items.Count > before.Items.Count)
-            return $"That's {after.Items.Count} stacks, {Ref(w, after)} holds {maxStacks}.";
+            return $"{Ref(w, after)} holds {maxStacks} stacks max.";
         return null;
     }
 

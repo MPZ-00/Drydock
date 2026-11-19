@@ -4,8 +4,7 @@ namespace Drydock.Core;
 
 /// <summary>
 /// Edits inventories by splicing bytes into the main chunk at offsets taken from the parsed tree.
-/// Nothing outside the touched item lists moves except by the size change, and the result is re-parsed before it is returned.
-/// With a <see cref="ItemCatalog"/> it also knows which items stack and which come in whole units.
+/// The result is re-parsed before it is returned.
 /// </summary>
 public sealed class SaveEditor(SaveArchive archive, ItemCatalog? catalog = null)
 {
@@ -31,9 +30,8 @@ public sealed class SaveEditor(SaveArchive archive, ItemCatalog? catalog = null)
     }
 
     /// <summary>
-    /// Add <paramref name="amount"/> of an item. Stackable items top up an existing stack or get a new one.
-    /// Tools, guns and power modules get one stack per unit like the game keeps them, copied from an existing stack of the
-    /// same item in this save when there is one so they keep its metadata (ammo, fill ratio).
+    /// Add <paramref name="amount"/> of an item, topping up a stack where the item stacks.
+    /// Unstackable items get one stack per unit, cloned from one in the save to keep its metadata.
     /// </summary>
     public void AddItem(Inventory inventory, Guid definition, decimal amount)
     {
@@ -75,7 +73,6 @@ public sealed class SaveEditor(SaveArchive archive, ItemCatalog? catalog = null)
             decimal current = stacks.Sum(CurrentAmount);
             if (amount > current)
                 AddItem(inventory, definition, amount - current);
-            // drop whole stacks from the end, newest first, then trim the last one
             for (int i = stacks.Count - 1; i >= 0 && current > amount; i--)
             {
                 decimal have = CurrentAmount(stacks[i]);
