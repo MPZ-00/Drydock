@@ -27,6 +27,7 @@ public partial class MainWindow : Window
             else
                 SavePicker.SelectedIndex = 0;
         };
+        Closing += (_, e) => e.Cancel = !ConfirmLeave("closing");
         Closed += (_, _) =>
         {
             _gamePoll.Stop();
@@ -34,10 +35,73 @@ public partial class MainWindow : Window
         };
     }
 
+    bool _switching;
+
     async void OnSaveChosen(object sender, SelectionChangedEventArgs e)
     {
-        if (_vm.SelectedSave is { } save)
-            await _vm.LoadAsync(save);
+        if (_switching || _vm.SelectedSave is not { } save || save == _vm.LoadedSave)
+            return;
+        if (!ConfirmLeave("switching saves"))
+        {
+            _switching = true;
+            _vm.SelectedSave = _vm.LoadedSave;
+            _switching = false;
+            return;
+        }
+        await _vm.LoadAsync(save);
+    }
+
+    /// <summary>Asks before pending edits would be lost. True means go ahead.</summary>
+    bool ConfirmLeave(string doing)
+    {
+        if (_vm.PendingCount == 0)
+            return true;
+        return MessageBox.Show(this, $"{_vm.PendingCount} pending changes aren't saved. Discard them by {doing}?",
+            "Drydock", MessageBoxButton.OKCancel, MessageBoxImage.Warning) == MessageBoxResult.OK;
+    }
+
+    async void OnSave(object sender, RoutedEventArgs e)
+    {
+        bool writeAnyway = false;
+        while (true)
+        {
+            var (decision, overrides) = await _vm.CheckSaveAsync(writeAnyway);
+            switch (decision)
+            {
+                case SaveDecision.Refuse refuse:
+                    MessageBox.Show(this, refuse.Message, "Drydock", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                case SaveDecision.Reload:
+                    if (MessageBox.Show(this, "The game saved this world since Drydock read it. Writing now would undo that. Reload it? Pending changes are lost.",
+                            "Drydock", MessageBoxButton.OKCancel, MessageBoxImage.Warning) == MessageBoxResult.OK)
+                        await _vm.LoadAsync(_vm.LoadedSave!);
+                    return;
+                case SaveDecision.Confirm:
+                    var list = string.Join("\n", overrides.Select(o => "- " + o.Message).Distinct());
+                    if (MessageBox.Show(this, $"These changes go past what the game allows:\n\n{list}\n\nWrite anyway?",
+                            "Drydock", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                        return;
+                    writeAnyway = true;
+                    continue;
+                case SaveDecision.Write:
+                    try
+                    {
+                        var backup = await _vm.WriteAsync(writeAnyway);
+                        MessageBox.Show(this, $"Saved. The old version is backed up in\n{backup}", "Drydock", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                    catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException)
+                    {
+                        MessageBox.Show(this, ex.Message, "Drydock", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                    return;
+            }
+        }
+    }
+
+    async void OnDiscard(object sender, RoutedEventArgs e)
+    {
+        if (_vm.PendingCount > 0 && ConfirmLeave("discarding"))
+            await _vm.DiscardAsync();
     }
 
     // rebuilding the tree after an edit clears its selection, the pane keeps showing the last inventory

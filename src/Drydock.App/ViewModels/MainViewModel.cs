@@ -95,7 +95,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public bool HasWorld
     {
         get => _hasWorld;
-        private set => Set(ref _hasWorld, value);
+        private set
+        {
+            if (Set(ref _hasWorld, value))
+                RaiseSave();
+        }
     }
 
     string _status = "";
@@ -116,7 +120,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public bool Busy
     {
         get => _busy;
-        private set => Set(ref _busy, value);
+        private set
+        {
+            if (Set(ref _busy, value))
+                RaiseSave();
+        }
     }
 
     bool _gameRunning;
@@ -125,8 +133,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         get => _gameRunning;
         private set
         {
-            if (Set(ref _gameRunning, value))
-                Raise(nameof(GameState));
+            if (!Set(ref _gameRunning, value))
+                return;
+            Raise(nameof(GameState));
+            RaiseSave();
         }
     }
 
@@ -136,7 +146,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public int PendingCount
     {
         get => _pendingCount;
-        internal set => Set(ref _pendingCount, value);
+        internal set
+        {
+            if (Set(ref _pendingCount, value))
+                RaiseSave();
+        }
     }
 
     public string Theme
@@ -213,6 +227,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             SetEdits([], [], loaded.objects);
             Objects = loaded.objects;
             HasWorld = true;
+            LoadedSave = save;
             Status = $"Loaded in {watch.Elapsed.TotalSeconds:0.0}s";
         }
         catch (Exception e)
@@ -362,5 +377,74 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Status = edits.Count == 0 ? "No pending changes" : $"{edits.Count} pending";
     }
 
+    // ---- saving ----
+
+    internal BackupStore Backups { get; init; } = BackupStore.Default;
+
+    /// <summary>The save the world and pending edits belong to, which can differ from the picker while switching.</summary>
+    public SaveInfo? LoadedSave { get; private set; }
+
+    public bool CanSave => HasWorld && PendingCount > 0 && !GameRunning && !Busy;
+
+    public string SaveLabel => PendingCount > 0 ? $"Save ({PendingCount})" : "Save";
+
+    void RaiseSave()
+    {
+        Raise(nameof(CanSave));
+        Raise(nameof(SaveLabel));
+    }
+
+    public static SaveDecision Decide(bool gameRunning, bool changedOnDisk, int overrides, bool writeAnyway) =>
+        gameRunning ? new SaveDecision.Refuse("Space Engineers 2 is running. Quit it completely, then save.")
+        : changedOnDisk ? new SaveDecision.Reload()
+        : overrides > 0 && !writeAnyway ? new SaveDecision.Confirm()
+        : new SaveDecision.Write();
+
+    /// <summary>What saving would do now, with the rule-breaking edits freshly computed (a preview may still be pending).</summary>
+    public Task<(SaveDecision Decision, IReadOnlyList<Override> Overrides)> CheckSaveAsync(bool writeAnyway) => Worker.Run(() =>
+    {
+        var overrides = _plan!.Overrides(_plan.Preview());
+        return (Decide(SaveWriter.GameRunning(), _world!.ChangedOnDisk(), overrides.Count, writeAnyway), overrides);
+    });
+
+    /// <summary>Builds the edited save, checks it against the edits, writes it with a backup and reloads it.</summary>
+    public async Task<string> WriteAsync(bool writeAnyway)
+    {
+        if ((await CheckSaveAsync(writeAnyway)).Decision is not SaveDecision.Write)
+            throw new InvalidOperationException("The save can't be written right now.");
+        Busy = true;
+        try
+        {
+            Status = "Writing save";
+            var backup = await Worker.Run(() =>
+            {
+                var built = _plan!.Replay().Build();
+                if (_plan.Check(_world!.WithArchive(built)) is { } problem)
+                    throw new InvalidOperationException($"Nothing was written. {problem}");
+                return SaveWriter.Write(built, _world.Path, Backups);
+            });
+            await LoadAsync(LoadedSave!);
+            Status = "Saved, backup made";
+            return backup;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
     public void Dispose() => Worker.Dispose();
+}
+
+public abstract record SaveDecision
+{
+    public sealed record Refuse(string Message) : SaveDecision;
+
+    /// <summary>The game saved over the file since it was loaded. Writing would lose that.</summary>
+    public sealed record Reload : SaveDecision;
+
+    /// <summary>Some edits break game rules and need "write anyway".</summary>
+    public sealed record Confirm : SaveDecision;
+
+    public sealed record Write : SaveDecision;
 }

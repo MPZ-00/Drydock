@@ -83,4 +83,32 @@ public sealed class MainViewModelTests : IDisposable
         Assert.True(vm.Tree[0].HasPending);
         Assert.Null(vm.EditError);
     }
+
+    [GameFact]
+    public async Task Saving_writes_a_backup_and_reloads_without_pending_edits()
+    {
+        var source = Saves.List().FirstOrDefault();
+        if (source == null || SaveWriter.GameRunning())
+            return; // needs a save, and the writer refuses while the game runs
+        var copy = Directory.CreateDirectory(Path.Combine(_dir, "saves", "Copy")).FullName;
+        foreach (var f in Directory.GetFiles(Path.GetDirectoryName(source.File)!))
+            File.Copy(f, Path.Combine(copy, Path.GetFileName(f)));
+        var vmWithStore = new MainViewModel(new Settings(), Path.Combine(_dir, "user.json"), Path.Combine(_dir, "portable.json"), Path.Combine(_dir, "saves"))
+        {
+            Backups = new BackupStore(Path.Combine(_dir, "backups"), () => false),
+        };
+        using var _ = vmWithStore;
+        vmWithStore.RefreshSaves();
+        await vmWithStore.LoadAsync(vmWithStore.Saves.Single());
+        var main = vmWithStore.Objects[0].Inventories.First(i => i.Slot == "main");
+        var iron = vmWithStore.Catalog.First(i => i.Name == "Iron" && i.Type == "Ore");
+        decimal target = vmWithStore.CurrentTotal(main.Index, iron.Guid) + 7;
+        await vmWithStore.ApplyAsync(new SetTotal(main.Index, iron.Guid, target));
+
+        var backup = await vmWithStore.WriteAsync(writeAnyway: true);
+
+        Assert.True(Directory.Exists(backup));
+        Assert.Equal(0, vmWithStore.PendingCount);
+        Assert.Equal(target, vmWithStore.CurrentTotal(main.Index, iron.Guid));
+    }
 }

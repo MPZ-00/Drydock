@@ -19,6 +19,9 @@
                           ToolTip="Also show grids that aren't yours and empty inventories" />
             </StackPanel>
             <StackPanel x:Name="TopBarRight" Grid.Column="2" Orientation="Horizontal">
+                <Button Content="{Binding SaveLabel}" IsEnabled="{Binding CanSave}" Padding="14,4" Margin="0,0,6,0" Click="OnSave"
+                        ToolTip="Write the pending changes. A backup is made first." />
+                <Button Content="Discard" Padding="10,4" Margin="0,0,12,0" Click="OnDiscard" />
                 <Menu VerticalAlignment="Center">
                     <MenuItem Header="Settings">
                         <MenuItem x:Name="ThemeMenu" Header="Theme">
