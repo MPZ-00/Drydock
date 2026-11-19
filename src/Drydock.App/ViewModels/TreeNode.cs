@@ -20,7 +20,8 @@ public sealed class TreeNode(string label, IReadOnlyList<TreeNode> children, Inv
 
 public static class TreeBuilder
 {
-    public static IReadOnlyList<TreeNode> Build(IReadOnlyList<ObjectView> objects, bool showAll, string filter, ISet<int> pending)
+    public static IReadOnlyList<TreeNode> Build(
+        IReadOnlyList<ObjectView> objects, bool showAll, string filter, ISet<int> pending, ISet<string>? expanded = null)
     {
         filter = filter.Trim();
         bool filtering = filter.Length > 0;
@@ -48,13 +49,22 @@ public static class TreeBuilder
                 if (block.Count() == 1 && slots[0].Slot == "main")
                     children.Add(Leaf(block.Key, slots[0], pending));
                 else
-                    children.Add(Branch(block.Key, slots.Select(i => Leaf(i.Slot, i, pending)).ToList(), filtering));
+                    children.Add(Branch(block.Key, slots.Select(i => Leaf(i.Slot, i, pending)).ToList(),
+                        filtering || expanded?.Contains($"{Label(o)}/{block.Key}") == true));
             }
             if (children.Count > 0)
-                result.Add(Branch(o.IsPlayer ? "Player" : $"{o.Name} ({o.Kind.ToString().ToLowerInvariant()})", children, filtering || o.IsPlayer));
+                result.Add(Branch(Label(o), children, filtering || o.IsPlayer || expanded?.Contains(Label(o)) == true));
         }
         return result;
     }
+
+    static string Label(ObjectView o) => o.IsPlayer ? "Player" : $"{o.Name} ({o.Kind.ToString().ToLowerInvariant()})";
+
+    /// <summary>Keys ("Aquila (ship)", "Aquila (ship)/Smelter") of the open branches, to keep them open across rebuilds.</summary>
+    public static ISet<string> ExpandedKeys(IEnumerable<TreeNode> roots) =>
+        roots.Where(r => r.IsExpanded).Select(r => r.Label)
+            .Concat(roots.SelectMany(r => r.Children.Where(c => c.IsExpanded).Select(c => $"{r.Label}/{c.Label}")))
+            .ToHashSet();
 
     static TreeNode Leaf(string label, InventoryView inventory, ISet<int> pending) =>
         new(label, [], inventory, pending.Contains(inventory.Index));
