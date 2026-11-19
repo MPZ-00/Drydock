@@ -29,6 +29,8 @@ public sealed class ItemCatalog
 
     ItemCatalog(Dictionary<Guid, ItemInfo> byGuid) => _byGuid = byGuid;
 
+    internal static ItemCatalog From(IEnumerable<ItemInfo> items) => new(items.ToDictionary(i => i.Guid));
+
     public ItemInfo? Find(Guid guid) => _byGuid.GetValueOrDefault(guid);
 
     /// <summary>Find by exact GUID, then by localization key, display name or "name type" like "Iron Ore" (case insensitive).</summary>

@@ -4,40 +4,95 @@ using System.Text.RegularExpressions;
 
 namespace Drydock.Core;
 
-/// <summary>What an inventory accepts, from the game's inventory definition. Both sets empty means anything.</summary>
-public sealed record InventoryRules(IReadOnlySet<string> Types, IReadOnlySet<Guid> Items)
+/// <summary>An inventory's limits from the game's inventory definition. Empty whitelists mean anything goes.</summary>
+public sealed record InventoryRules(string[] Types, Guid[] Items, double? MaxMass, int? MaxStacks)
 {
     public bool Accepts(ItemInfo item) =>
-        (Types.Count == 0 && Items.Count == 0) || Types.Contains(item.Type) || Items.Contains(item.Guid);
+        (Types.Length == 0 && Items.Length == 0) || Types.Contains(item.Type) || Items.Contains(item.Guid);
 }
 
 /// <summary>What Drydock reads from the game's content folder: item definitions, localized texts and inventory slots.</summary>
 public sealed partial class GameContent
 {
+    // what is pulled out of the ~19k .def files, cached because reading them is most of a cold start
+    sealed record Snapshot(
+        string Stamp,
+        List<ItemInfo> Items,
+        Dictionary<Guid, string> SlotKeys,
+        Dictionary<Guid, Dictionary<Guid, Guid>> CompositeSlots,
+        Dictionary<Guid, InventoryRules> InventoryRules,
+        Dictionary<Guid, Guid> CompositeBases);
+
+    const int SnapshotFormat = 1;
+
+    public static readonly string CacheDir = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Drydock", "cache");
+
     readonly Dictionary<string, string> _texts;
-    readonly Dictionary<Guid, string> _slotKeys;
-    readonly Dictionary<Guid, Dictionary<Guid, Guid>> _compositeSlots;
-    readonly Dictionary<Guid, InventoryRules> _inventoryRules;
-    readonly DefinitionIndex _definitions;
+    readonly Snapshot _snapshot;
 
     public ItemCatalog Items { get; }
 
-    GameContent(ItemCatalog items, Dictionary<string, string> texts, Dictionary<Guid, string> slotKeys,
-        Dictionary<Guid, Dictionary<Guid, Guid>> compositeSlots, Dictionary<Guid, InventoryRules> inventoryRules, DefinitionIndex definitions)
+    GameContent(Snapshot snapshot, Dictionary<string, string> texts)
     {
-        Items = items;
+        _snapshot = snapshot;
         _texts = texts;
-        _slotKeys = slotKeys;
-        _compositeSlots = compositeSlots;
-        _inventoryRules = inventoryRules;
-        _definitions = definitions;
+        Items = ItemCatalog.From(snapshot.Items);
     }
 
     /// <param name="gameRoot">The SpaceEngineers2 folder holding GameData.</param>
-    public static GameContent Load(string gameRoot, string language = "en-US")
+    /// <param name="useCache">Read and write the snapshot in <see cref="CacheDir"/>.</param>
+    public static GameContent Load(string gameRoot, string language = "en-US", bool useCache = true)
     {
         var content = Path.Combine(gameRoot, "GameData", "Vanilla", "Content");
         var texts = LoadTexts(Path.Combine(content, "MainMenuData", "Texts", language));
+        var stamp = Stamp(content, language);
+        var cacheFile = Path.Combine(CacheDir, $"content-{language}.json");
+        if (useCache && ReadCache(cacheFile, stamp) is { } cached)
+            return new GameContent(cached, texts);
+        var snapshot = Scan(content, texts, stamp);
+        if (useCache)
+            WriteCache(cacheFile, snapshot);
+        return new GameContent(snapshot, texts);
+    }
+
+    // changes with every game update, which is the only time content changes
+    static string Stamp(string content, string language)
+    {
+        var sets = new FileInfo(Path.Combine(content, "definitionsets.vrb"));
+        return $"{SnapshotFormat}|{GameInstall.GameVersion()}|{sets.Length}|{sets.LastWriteTimeUtc.Ticks}|{language}";
+    }
+
+    static Snapshot? ReadCache(string file, string stamp)
+    {
+        try
+        {
+            var snapshot = JsonSerializer.Deserialize<Snapshot>(File.ReadAllText(file));
+            return snapshot?.Stamp == stamp ? snapshot : null;
+        }
+        catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
+    static void WriteCache(string file, Snapshot snapshot)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+            var temp = file + ".tmp";
+            File.WriteAllText(temp, JsonSerializer.Serialize(snapshot));
+            File.Move(temp, file, overwrite: true);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // a cache that can't be written only costs speed
+        }
+    }
+
+    static Snapshot Scan(string content, Dictionary<string, string> texts, string stamp)
+    {
         var files = new Dictionary<Guid, string>();
         var slotKeys = new Dictionary<Guid, List<string>>();
         var compositeSlots = new Dictionary<Guid, Dictionary<Guid, Guid>>();
@@ -65,9 +120,15 @@ public sealed partial class GameContent
                 inventoryRules[guid] = Rules(JsonNode.Parse(text)?["$Value"]);
         }
         var definitions = DefinitionIndex.Load(Path.Combine(content, "definitionsets.vrb"));
-        return new GameContent(ItemCatalog.Build(definitions, files, texts), texts,
+        var bases = definitions.All.Where(d => d.BaseGuid != Guid.Empty && compositeSlots.ContainsKey(d.Guid))
+            .ToDictionary(d => d.Guid, d => d.BaseGuid);
+        return new Snapshot(
+            stamp,
+            ItemCatalog.Build(definitions, files, texts).Items.ToList(),
             slotKeys.ToDictionary(kv => kv.Key, kv => kv.Value.OrderBy(KeyRank).First()),
-            compositeSlots, inventoryRules, definitions);
+            compositeSlots,
+            inventoryRules,
+            bases);
     }
 
     // one component can be named twice, the smelter's output is also its "InventoryStockpile"; the specific name wins
@@ -104,7 +165,9 @@ public sealed partial class GameContent
             _ => null,
         };
         var guids = items?.Select(n => Guid.TryParse(n?.ToString(), out var g) ? g : Guid.Empty).Where(g => g != Guid.Empty) ?? [];
-        return new InventoryRules(types.ToHashSet(), guids.ToHashSet());
+        double? maxMass = value?["MaxMass"] is JsonValue m && m.TryGetValue<double>(out var mass) ? mass : null;
+        int? maxStacks = value?["MaxStacks"] is JsonValue s && s.TryGetValue<int>(out var stacks) ? stacks : null;
+        return new InventoryRules(types, [.. guids], maxMass, maxStacks);
     }
 
     /// <summary>What a slot of an entity accepts, following the composite's base chain. Null when the game data doesn't say.</summary>
@@ -112,9 +175,9 @@ public sealed partial class GameContent
     {
         for (int depth = 0; composite is { } c && c != Guid.Empty && depth < 16; depth++)
         {
-            if (_compositeSlots.TryGetValue(c, out var slots) && slots.TryGetValue(slot, out var def))
-                return _inventoryRules.GetValueOrDefault(def);
-            composite = _definitions.Find(c)?.BaseGuid;
+            if (_snapshot.CompositeSlots.TryGetValue(c, out var slots) && slots.TryGetValue(slot, out var def))
+                return _snapshot.InventoryRules.GetValueOrDefault(def);
+            composite = _snapshot.CompositeBases.TryGetValue(c, out var b) ? b : null;
         }
         return null;
     }
@@ -124,7 +187,7 @@ public sealed partial class GameContent
     /// <summary>Short slot name for an inventory component key: main, consumables, datapads, input, output, cell0.</summary>
     public string SlotName(Guid slot)
     {
-        if (!_slotKeys.TryGetValue(slot, out var key))
+        if (!_snapshot.SlotKeys.TryGetValue(slot, out var key))
             return slot.ToString()[..8];
         return key switch
         {
