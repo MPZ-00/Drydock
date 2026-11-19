@@ -38,7 +38,52 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public IReadOnlyList<ObjectView> Objects
     {
         get => _objects;
-        private set => Set(ref _objects, value);
+        private set
+        {
+            if (Set(ref _objects, value))
+                RebuildTree();
+        }
+    }
+
+    string _filter = "";
+    public string Filter
+    {
+        get => _filter;
+        set
+        {
+            if (Set(ref _filter, value))
+                RebuildTree();
+        }
+    }
+
+    bool _showAll;
+    public bool ShowAll
+    {
+        get => _showAll;
+        set
+        {
+            if (Set(ref _showAll, value))
+                RebuildTree();
+        }
+    }
+
+    IReadOnlyList<TreeNode> _tree = [];
+    public IReadOnlyList<TreeNode> Tree
+    {
+        get => _tree;
+        private set => Set(ref _tree, value);
+    }
+
+    /// <summary>Inventories with pending edits, marked in the tree.</summary>
+    internal ISet<int> PendingInventories { get; set; } = new HashSet<int>();
+
+    internal void RebuildTree() => Tree = TreeBuilder.Build(Objects, ShowAll, Filter, PendingInventories);
+
+    InventoryView? _selectedInventory;
+    public InventoryView? SelectedInventory
+    {
+        get => _selectedInventory;
+        set => Set(ref _selectedInventory, value);
     }
 
     bool _hasWorld;

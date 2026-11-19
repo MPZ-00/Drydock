@@ -12,7 +12,12 @@
             </Grid.ColumnDefinitions>
             <ComboBox x:Name="SavePicker" Grid.Column="0" MinWidth="280" ItemsSource="{Binding Saves}"
                       SelectedItem="{Binding SelectedSave}" DisplayMemberPath="Name" SelectionChanged="OnSaveChosen" />
-            <StackPanel x:Name="TopBarMiddle" Grid.Column="1" Orientation="Horizontal" Margin="8,0" />
+            <StackPanel x:Name="TopBarMiddle" Grid.Column="1" Orientation="Horizontal" Margin="8,0">
+                <TextBox Width="220" VerticalContentAlignment="Center" ToolTip="Filter by ship, block or slot name"
+                         Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged}" />
+                <CheckBox Content="show all" Margin="12,0,0,0" VerticalAlignment="Center" IsChecked="{Binding ShowAll}"
+                          ToolTip="Also show grids that aren't yours and empty inventories" />
+            </StackPanel>
             <StackPanel x:Name="TopBarRight" Grid.Column="2" Orientation="Horizontal">
                 <Menu VerticalAlignment="Center">
                     <MenuItem Header="Settings">
@@ -42,7 +47,29 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <Border x:Name="TreeHost" Grid.Column="0" />
+            <TreeView x:Name="InventoryTree" Grid.Column="0" ItemsSource="{Binding Tree}" SelectedItemChanged="OnTreeSelection">
+                <TreeView.ItemContainerStyle>
+                    <Style TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
+                        <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                    </Style>
+                </TreeView.ItemContainerStyle>
+                <TreeView.ItemTemplate>
+                    <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                        <TextBlock Text="{Binding Label}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasPending}" Value="True">
+                                            <Setter Property="FontWeight" Value="SemiBold" />
+                                            <Setter Property="Foreground" Value="DarkOrange" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </HierarchicalDataTemplate>
+                </TreeView.ItemTemplate>
+            </TreeView>
             <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" Background="Transparent" />
             <Grid Grid.Column="2">
                 <Border x:Name="PaneHost" />

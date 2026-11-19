@@ -40,6 +40,9 @@ public partial class MainWindow : Window
             await _vm.LoadAsync(save);
     }
 
+    void OnTreeSelection(object sender, RoutedPropertyChangedEventArgs<object> e) =>
+        _vm.SelectedInventory = (e.NewValue as TreeNode)?.Inventory;
+
     void OnTheme(object sender, RoutedEventArgs e)
     {
         var theme = (string)((MenuItem)sender).Tag;
