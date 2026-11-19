@@ -1,16 +1,16 @@
-using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 
 namespace Drydock.Core;
 
-public sealed record ItemInfo(Guid Guid, string Key, string Name, string Kind, string Type, double MassPerUnit, double VolumePerUnit);
+/// <param name="Stackable">False for tools, guns and power modules, which the game keeps one per stack.</param>
+/// <param name="Divisible">True for ore and ingots, which come in fractions.</param>
+public sealed record ItemInfo(Guid Guid, string Key, string Name, string Kind, string Type, double MassPerUnit, double VolumePerUnit, bool Stackable, bool Divisible);
 
 /// <summary>
 /// Item definitions from the game's content. definitionsets.vrb says which definitions exist, their runtime type and
 /// what they inherit from; the JSON .def files hold the values, merged over their base.
 /// </summary>
-public sealed partial class ItemCatalog
+public sealed class ItemCatalog
 {
     // runtime definition types the inventory accepts; anything else in a slot shows up by GUID
     static readonly Dictionary<string, string> ItemKinds = new()
@@ -44,13 +44,10 @@ public sealed partial class ItemCatalog
 
     static IEnumerable<string> Names(ItemInfo i) => [i.Key, i.Name, $"{i.Name} {i.Type}"];
 
-    /// <param name="gameRoot">The SpaceEngineers2 folder holding GameData.</param>
-    public static ItemCatalog Load(string gameRoot, string language = "en-US")
+    /// <param name="files">The .def file of each definition GUID.</param>
+    /// <param name="texts">Localized texts by key.</param>
+    internal static ItemCatalog Build(DefinitionIndex definitions, Dictionary<Guid, string> files, Dictionary<string, string> texts)
     {
-        var content = Path.Combine(gameRoot, "GameData", "Vanilla", "Content");
-        var definitions = DefinitionIndex.Load(Path.Combine(content, "definitionsets.vrb"));
-        var files = IndexDefFiles(content);
-        var texts = LoadTexts(Path.Combine(content, "MainMenuData", "Texts", language));
         var resolved = new Dictionary<Guid, JsonObject?>();
 
         var items = new Dictionary<Guid, ItemInfo>();
@@ -63,6 +60,7 @@ public sealed partial class ItemCatalog
             // abstract bases like DatapadBase have no name of their own
             if (value?["DisplayName"]?.GetValue<string>() is not { Length: > 0 } key)
                 continue;
+            int flags = StackFlags(value["Flags"]);
             items[def.Guid] = new ItemInfo(
                 def.Guid,
                 key,
@@ -70,9 +68,27 @@ public sealed partial class ItemCatalog
                 kind,
                 value["Type"]?.GetValue<string>() ?? kind,
                 Number(value, "MassPerUnit"),
-                Number(value, "VolumePerUnit"));
+                Number(value, "VolumePerUnit"),
+                (flags & Stackable) != 0,
+                (flags & Divisible) != 0);
         }
         return new ItemCatalog(items);
+    }
+
+    // the game's ItemStackFlags
+    const int Stackable = 1, Divisible = 2, PresetNormal = 3;
+
+    /// <summary>"Stackable, Divisible", "PresetNormal" or a number. A definition without the field is treated as normal.</summary>
+    static int StackFlags(JsonNode? node)
+    {
+        if (node is not JsonValue value)
+            return PresetNormal;
+        if (value.TryGetValue<int>(out int number))
+            return number;
+        int flags = 0;
+        foreach (var name in value.ToString().Split(',', StringSplitOptions.TrimEntries))
+            flags |= name switch { "Stackable" => Stackable, "Divisible" => Divisible, "PresetNormal" => PresetNormal, _ => 0 };
+        return flags;
     }
 
     /// <summary>A definition's $Value with its base chain merged underneath, top-level fields only.</summary>
@@ -94,35 +110,6 @@ public sealed partial class ItemCatalog
                 merged[name] = node?.DeepClone();
         }
         return cache[guid] = merged;
-    }
-
-    static Dictionary<Guid, string> IndexDefFiles(string content)
-    {
-        var files = new Dictionary<Guid, string>();
-        foreach (var file in Directory.EnumerateFiles(content, "*.def", SearchOption.AllDirectories))
-        {
-            var match = ValueGuid().Match(File.ReadAllText(file));
-            if (match.Success)
-                files.TryAdd(Guid.Parse(match.Groups[1].Value), file);
-        }
-        return files;
-    }
-
-    [GeneratedRegex("\"\\$Value\":\\s*\\{\\s*\"Guid\":\\s*\"([0-9a-fA-F-]{36})\"")]
-    private static partial Regex ValueGuid();
-
-    static Dictionary<string, string> LoadTexts(string dir)
-    {
-        var texts = new Dictionary<string, string>();
-        if (!Directory.Exists(dir))
-            return texts;
-        foreach (var file in Directory.EnumerateFiles(dir, "*.loc-texts"))
-        {
-            var entries = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(file));
-            foreach (var (k, v) in entries ?? [])
-                texts.TryAdd(k, v);
-        }
-        return texts;
     }
 
     static double Number(JsonObject o, string name) =>
