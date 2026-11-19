@@ -45,7 +45,7 @@ static class Commands
         var w = Load(save);
         if (target != null)
         {
-            var matches = Match(w, target);
+            var matches = w.Match(target);
             if (matches.Count == 0)
                 Console.Error.WriteLine($"No inventory matches '{target}'.");
             foreach (int n in matches)
@@ -96,38 +96,6 @@ static class Commands
             Console.WriteLine("    (empty)");
     }
 
-    /// <summary>
-    /// Inventories a target names: #number, player[:slot], or object[/block][:slot] where each part is an exact name
-    /// or, failing that, part of one.
-    /// </summary>
-    static List<int> Match(World w, string target)
-    {
-        var all = Enumerable.Range(0, w.Inventories.Count).ToList();
-        if (int.TryParse(target.TrimStart('#'), out int number))
-            return number >= 0 && number < w.Inventories.Count ? [number] : [];
-
-        string? slot = null;
-        int colon = target.LastIndexOf(':');
-        if (colon > 0 && all.Any(n => w.Content.SlotName(w.Inventories[n].Slot).Equals(target[(colon + 1)..], StringComparison.OrdinalIgnoreCase)))
-            (target, slot) = (target[..colon], target[(colon + 1)..]);
-        int slash = target.IndexOf('/');
-        var objectPart = slash < 0 ? target : target[..slash];
-        var blockPart = slash < 0 ? null : target[(slash + 1)..];
-
-        var hits = Pick(all, n => w.ObjectName(w.Inventories[n].Object), objectPart);
-        if (blockPart != null)
-            hits = Pick(hits, n => w.BlockLabel(w.Inventories[n]), blockPart);
-        if (slot != null)
-            hits = hits.Where(n => w.Content.SlotName(w.Inventories[n].Slot).Equals(slot, StringComparison.OrdinalIgnoreCase)).ToList();
-        return hits;
-    }
-
-    static List<int> Pick(List<int> candidates, Func<int, string> name, string query)
-    {
-        var exact = candidates.Where(n => name(n).Equals(query, StringComparison.OrdinalIgnoreCase)).ToList();
-        return exact.Count > 0 ? exact : candidates.Where(n => name(n).Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
-    }
-
     public enum EditKind { Set, Add, Remove }
 
     /// <summary>One inventory edit from the command line. Amount 0 with set removes the item.</summary>
@@ -150,27 +118,7 @@ static class Commands
         }
         var item = items[0];
 
-        bool? Accepts(int i) => w.Content.Rules(w.Inventories[i].Composite, w.Inventories[i].Slot)?.Accepts(item);
-
-        var matches = Match(w, target);
-        // no slot named: let the game's whitelists pick
-        if (matches.Count > 1 && !target.Contains(':'))
-        {
-            var accepting = matches.Where(i => Accepts(i) == true).ToList();
-            if (accepting.Count > 0)
-                matches = accepting;
-            var slot = item.Kind switch
-            {
-                "Consumable" => "consumables",
-                "Datapad" => "datapads",
-                "Quest" => "quest",
-                "Schematic" => "schematics",
-                _ => "main",
-            };
-            var preferred = matches.Where(i => w.Content.SlotName(w.Inventories[i].Slot) == slot).ToList();
-            if (preferred.Count > 0 && matches.Count > 1)
-                matches = preferred;
-        }
+        var matches = w.Route(w.Match(target), item, slotNamed: target.Contains(':'));
         if (matches.Count != 1)
         {
             Console.Error.WriteLine(matches.Count == 0
@@ -182,15 +130,8 @@ static class Commands
         }
         int n = matches[0];
         var inventory = w.Inventories[n];
-        if (kind != EditKind.Remove && amount > 0 && Accepts(n) == false && !force)
-        {
-            var sameBlockSlot = Enumerable.Range(0, w.Inventories.Count).FirstOrDefault(i => i != n && Accepts(i) == true
-                && ReferenceEquals(w.Inventories[i].Object, inventory.Object) && w.Inventories[i].Position == inventory.Position
-                && w.Inventories[i].Block == inventory.Block, -1);
-            return Fail($"{w.Ref(inventory)} doesn't take {item.Name}."
-                + (sameBlockSlot >= 0 ? $" It goes in \"{w.Ref(w.Inventories[sameBlockSlot])}\"." : "")
-                + " Use --force to override it.");
-        }
+        if (kind != EditKind.Remove && amount > 0 && w.Accepts(n, item) == false && !force)
+            return Fail($"{w.Rejection(n, item)} Use --force to override it.");
 
         var editor = new SaveEditor(w.Archive, w.Content.Items);
         try
@@ -224,7 +165,7 @@ static class Commands
         Console.WriteLine("After the edit:");
         var after = w.WithArchive(edited);
         PrintInventory(after, n, after.Inventories[n]);
-        if (OverCapacity(w, inventory, after.Inventories[n]) is { } problem)
+        if (w.OverCapacity(inventory, after.Inventories[n]) is { } problem)
         {
             if (!force)
                 return Fail($"{problem} Use --force to override it.");
@@ -245,19 +186,6 @@ static class Commands
         {
             return Fail(e.Message);
         }
-    }
-
-    /// <summary>Why the edit overfills the inventory, or null. An inventory already over its limit may still shrink.</summary>
-    static string? OverCapacity(World w, Inventory before, Inventory after)
-    {
-        if (w.Rules(before) is not { } rules)
-            return null;
-        double massBefore = w.Mass(before), massAfter = w.Mass(after);
-        if (rules.MaxMass is { } maxMass && massAfter > maxMass && massAfter > massBefore)
-            return $"{w.Ref(after)} holds {maxMass:0.##}kg max.";
-        if (rules.MaxStacks is { } maxStacks && after.Items.Count > maxStacks && after.Items.Count > before.Items.Count)
-            return $"{w.Ref(after)} holds {maxStacks} stacks max.";
-        return null;
     }
 
     static int Fail(string message)
