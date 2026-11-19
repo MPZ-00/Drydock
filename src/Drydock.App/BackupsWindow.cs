@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Drydock.App.ViewModels;
+using Drydock.Core;
 
 namespace Drydock.App;
 
@@ -14,11 +15,14 @@ sealed class BackupsWindow : Window
     readonly TextBlock _warning = new() { Foreground = Brushes.Firebrick, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
     BackupsViewModel _vm;
 
-    public BackupsWindow(MainViewModel main)
+    readonly SaveInfo _save;
+
+    public BackupsWindow(MainViewModel main, SaveInfo save)
     {
         _main = main;
-        _vm = new BackupsViewModel(main.Backups, Path.GetDirectoryName(main.LoadedSave!.File)!);
-        Title = $"Backups of {main.LoadedSave.Name}";
+        _save = save;
+        _vm = new BackupsViewModel(main.Backups, Path.GetDirectoryName(save.File)!);
+        Title = $"Backups of {save.Name}";
         Width = 520;
         SizeToContent = SizeToContent.Height;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -95,7 +99,7 @@ sealed class BackupsWindow : Window
             return;
         try
         {
-            await _main.RestoreAsync(item.Backup);
+            await _main.RestoreAsync(item.Backup, _save);
         }
         catch (Exception e) when (e is InvalidOperationException or IOException or UnauthorizedAccessException)
         {

@@ -104,6 +104,15 @@ public sealed partial class BackupStore(string root, Func<bool>? gameRunning = n
     public void Prune(string saveDir, int keep = 20)
     {
         foreach (var old in For(saveDir).Skip(keep))
-            Directory.Delete(old.Folder, recursive: true);
+        {
+            try
+            {
+                Directory.Delete(old.Folder, recursive: true);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // a locked old backup goes on the next prune, it must not fail the write that came before
+            }
+        }
     }
 }

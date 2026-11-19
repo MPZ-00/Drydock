@@ -60,7 +60,24 @@ public partial class MainWindow : Window
             "Drydock", MessageBoxButton.OKCancel, MessageBoxImage.Warning) == MessageBoxResult.OK;
     }
 
+    bool _saving;
+
     async void OnSave(object sender, RoutedEventArgs e)
+    {
+        if (_saving)
+            return;
+        _saving = true;
+        try
+        {
+            await Save();
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    async Task Save()
     {
         bool writeAnyway = false;
         while (true)
@@ -99,7 +116,7 @@ public partial class MainWindow : Window
     }
 
     void OnBackups(object sender, RoutedEventArgs e) =>
-        new BackupsWindow(_vm) { Owner = this }.ShowDialog();
+        new BackupsWindow(_vm, _vm.SelectedSave!) { Owner = this }.ShowDialog();
 
     async void OnDiscard(object sender, RoutedEventArgs e)
     {

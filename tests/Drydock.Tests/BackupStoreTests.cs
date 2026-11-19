@@ -110,6 +110,18 @@ public sealed class BackupStoreTests : IDisposable
     }
 
     [Fact]
+    public void A_locked_old_backup_does_not_fail_pruning()
+    {
+        var save = MakeSave();
+        for (int i = 0; i < 22; i++)
+            HandMade("My World", new DateTime(2026, 1, 1).AddHours(i), "savegame.vrb");
+        var oldest = Store().For(save)[^1];
+        using (File.Open(Path.Combine(oldest.Folder, "savegame.vrb"), FileMode.Open, FileAccess.Read, FileShare.None))
+            Store().Prune(save, keep: 20);
+        Assert.Equal(21, Store().For(save).Count);
+    }
+
+    [Fact]
     public void A_drydock_write_is_not_game_progress()
     {
         var save = MakeSave();

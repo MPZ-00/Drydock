@@ -25,7 +25,14 @@ public static class SaveWriter
         var temp = targetPath + ".drydock-tmp";
         File.WriteAllBytes(temp, edited.File.Data);
         File.Move(temp, targetPath, overwrite: true);
-        store.MarkWritten(backup, saveDir);
+        try
+        {
+            store.MarkWritten(backup, saveDir);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // the save is written; without the marker this backup only reads as older than it is
+        }
         store.Prune(saveDir);
         return backup.Folder;
     }

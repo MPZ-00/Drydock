@@ -27,7 +27,7 @@ public sealed record InventoryViewModel(
     /// <param name="preview">The same inventory with the pending edits applied, for totals and limits.</param>
     public static InventoryViewModel Build(
         InventoryView loaded, InventoryView preview, IReadOnlyList<Edit> edits, IReadOnlyList<Override> overrides,
-        Func<Guid, string> name, IReadOnlyDictionary<Guid, StateInfo>? states = null)
+        Func<Guid, string> name, IReadOnlyDictionary<Guid, StateInfo>? states = null, InventoryViewModel? previous = null)
     {
         var mine = edits.Where(e => e.Inventory == loaded.Index).ToList();
         var rows = new List<RowViewModel>();
@@ -66,6 +66,8 @@ public sealed record InventoryViewModel(
                 CanEditAmount: false, null, IsChanged: true, IsRemoved: false, add));
         }
 
+        // the same list keeps WPF from rebuilding the rows, which would drop what the user is typing
+        IReadOnlyList<RowViewModel> keptRows = previous?.Index == loaded.Index && previous.Rows.SequenceEqual(rows) ? previous.Rows : rows;
         bool massOver = preview.MaxMass is { } maxMass && preview.Mass > maxMass;
         bool stacksOver = preview.MaxStacks is { } maxStacks && preview.Stacks > maxStacks;
         return new InventoryViewModel(
@@ -74,7 +76,7 @@ public sealed record InventoryViewModel(
             preview.MaxMass is { } mm and > 0 ? Math.Min(1, preview.Mass / mm) : 0, massOver,
             $"{preview.Stacks}{(preview.MaxStacks is { } s ? $"/{s}" : "")} stacks",
             preview.MaxStacks is { } ms and > 0 ? Math.Min(1, (double)preview.Stacks / ms) : 0, stacksOver,
-            rows,
+            keptRows,
             overrides.Where(o => o.Inventory == loaded.Index).Select(o => o.Message).Distinct().ToList());
     }
 

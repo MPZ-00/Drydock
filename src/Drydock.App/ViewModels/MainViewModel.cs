@@ -31,7 +31,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public SaveInfo? SelectedSave
     {
         get => _selectedSave;
-        set => Set(ref _selectedSave, value);
+        set
+        {
+            if (Set(ref _selectedSave, value))
+                Raise(nameof(CanOpenBackups));
+        }
     }
 
     IReadOnlyList<ObjectView> _objects = [];
@@ -301,7 +305,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
         var preview = _previewObjects.SelectMany(o => o.Inventories).FirstOrDefault(i => i.Index == loaded.Index) ?? loaded;
-        Pane = InventoryViewModel.Build(loaded, preview, Edits, Overrides, ItemName, States);
+        Pane = InventoryViewModel.Build(loaded, preview, Edits, Overrides, ItemName, States, Pane);
     }
 
     public string ItemName(Guid item) => Catalog.FirstOrDefault(i => i.Guid == item)?.Name ?? item.ToString();
@@ -330,6 +334,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     async Task Change(Action<EditPlan> change)
     {
+        if (Busy)
+        {
+            EditError = "Wait until saving or loading is done.";
+            return;
+        }
         EditError = null;
         try
         {
@@ -381,6 +390,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     internal BackupStore Backups { get; init; } = BackupStore.Default;
 
+    internal Func<bool> GameRunningCheck { get; init; } = SaveWriter.GameRunning;
+
+    /// <summary>Backups belong to the picked save, so a save that fails to load can still be restored.</summary>
+    public bool CanOpenBackups => SelectedSave != null;
+
+    bool _saving;
+
     /// <summary>The save the world and pending edits belong to, which can differ from the picker while switching.</summary>
     public SaveInfo? LoadedSave { get; private set; }
 
@@ -404,21 +420,33 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public Task<(SaveDecision Decision, IReadOnlyList<Override> Overrides)> CheckSaveAsync(bool writeAnyway) => Worker.Run(() =>
     {
         var overrides = _plan!.Overrides(_plan.Preview());
-        return (Decide(SaveWriter.GameRunning(), _world!.ChangedOnDisk(), overrides.Count, writeAnyway), overrides);
+        return (Decide(GameRunningCheck(), _world!.ChangedOnDisk(), overrides.Count, writeAnyway), overrides);
     });
 
     /// <summary>Builds the edited save, checks it against the edits, writes it with a backup and reloads it.</summary>
     public async Task<string> WriteAsync(bool writeAnyway)
     {
-        if ((await CheckSaveAsync(writeAnyway)).Decision is not SaveDecision.Write)
-            throw new InvalidOperationException("The save can't be written right now.");
+        if (_saving)
+            throw new InvalidOperationException("Drydock is already saving.");
+        _saving = true;
         Busy = true;
         try
         {
             Status = "Writing save";
             var backup = await Worker.Run(() =>
             {
-                var built = _plan!.Replay().Build();
+                // decided in the same job that writes, so nothing can change in between
+                var overrides = _plan!.Overrides(_plan.Preview());
+                switch (Decide(GameRunningCheck(), _world!.ChangedOnDisk(), overrides.Count, writeAnyway))
+                {
+                    case SaveDecision.Refuse refuse:
+                        throw new InvalidOperationException(refuse.Message);
+                    case SaveDecision.Reload:
+                        throw new InvalidOperationException("The game saved this world since Drydock read it. Nothing was written.");
+                    case SaveDecision.Confirm:
+                        throw new InvalidOperationException("Some changes go past what the game allows. Nothing was written.");
+                }
+                var built = _plan.Replay().Build();
                 if (_plan.Check(_world!.WithArchive(built)) is { } problem)
                     throw new InvalidOperationException($"Nothing was written. {problem}");
                 return SaveWriter.Write(built, _world.Path, Backups);
@@ -429,16 +457,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
         finally
         {
+            _saving = false;
             Busy = false;
         }
     }
 
-    /// <summary>Puts a backup back and reloads the save. Pending edits are dropped.</summary>
-    public async Task RestoreAsync(Backup backup)
+    /// <summary>Puts a backup back and loads the save. Pending edits are dropped.</summary>
+    public async Task RestoreAsync(Backup backup, SaveInfo save)
     {
-        var saveDir = Path.GetDirectoryName(LoadedSave!.File)!;
+        var saveDir = Path.GetDirectoryName(save.File)!;
         await Worker.Run(() => Backups.Restore(backup, saveDir));
-        await LoadAsync(LoadedSave);
+        await LoadAsync(save);
     }
 
     public void Dispose() => Worker.Dispose();

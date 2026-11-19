@@ -84,6 +84,85 @@ public sealed class MainViewModelTests : IDisposable
         Assert.Null(vm.EditError);
     }
 
+    /// <summary>A copy of the newest real save under the temp saves root, or null without one.</summary>
+    string? CopySave()
+    {
+        var source = Saves.List().FirstOrDefault();
+        if (source == null)
+            return null;
+        var copy = Directory.CreateDirectory(Path.Combine(_dir, "saves", "Copy")).FullName;
+        foreach (var f in Directory.GetFiles(Path.GetDirectoryName(source.File)!))
+            File.Copy(f, Path.Combine(copy, Path.GetFileName(f)));
+        return copy;
+    }
+
+    MainViewModel WithStore() => new(new Settings(), Path.Combine(_dir, "user.json"), Path.Combine(_dir, "portable.json"), Path.Combine(_dir, "saves"))
+    {
+        Backups = new BackupStore(Path.Combine(_dir, "backups"), () => false),
+        GameRunningCheck = () => false,
+    };
+
+    [GameFact]
+    public async Task A_save_the_game_wrote_meanwhile_is_never_overwritten()
+    {
+        if (CopySave() is not { } copy)
+            return;
+        using var vm = WithStore();
+        vm.RefreshSaves();
+        await vm.LoadAsync(vm.Saves.Single());
+        var main = vm.Objects[0].Inventories.First(i => i.Slot == "main");
+        var iron = vm.Catalog.First(i => i.Name == "Iron" && i.Type == "Ore");
+        await vm.ApplyAsync(new SetTotal(main.Index, iron.Guid, vm.CurrentTotal(main.Index, iron.Guid) + 7));
+        var file = Path.Combine(copy, "savegame.vrb");
+        File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddMinutes(1));
+        var bytes = File.ReadAllBytes(file);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.WriteAsync(writeAnyway: true));
+
+        Assert.Equal(bytes, File.ReadAllBytes(file));
+    }
+
+    [GameFact]
+    public async Task A_second_save_while_saving_is_refused()
+    {
+        if (CopySave() is null)
+            return;
+        using var vm = WithStore();
+        vm.RefreshSaves();
+        await vm.LoadAsync(vm.Saves.Single());
+        var main = vm.Objects[0].Inventories.First(i => i.Slot == "main");
+        var iron = vm.Catalog.First(i => i.Name == "Iron" && i.Type == "Ore");
+        await vm.ApplyAsync(new SetTotal(main.Index, iron.Guid, vm.CurrentTotal(main.Index, iron.Guid) + 7));
+
+        var first = vm.WriteAsync(writeAnyway: true);
+        var second = await Record.ExceptionAsync(() => vm.WriteAsync(writeAnyway: true));
+        try { await first; } catch (InvalidOperationException) { } // the real writer refuses while SE2 runs
+
+        Assert.IsType<InvalidOperationException>(second);
+        Assert.Contains("already", second.Message);
+    }
+
+    [GameFact]
+    public async Task A_save_that_fails_to_load_can_still_be_restored()
+    {
+        if (CopySave() is not { } copy)
+            return;
+        using var vm = WithStore();
+        var backup = vm.Backups.Create(copy);
+        File.WriteAllText(Path.Combine(copy, "savegame.vrb"), "broken");
+        vm.RefreshSaves();
+        var save = vm.Saves.Single();
+        vm.SelectedSave = save;
+        await vm.LoadAsync(save);
+        Assert.False(vm.HasWorld);
+        Assert.True(vm.CanOpenBackups);
+
+        await vm.RestoreAsync(backup, save);
+
+        Assert.True(vm.HasWorld);
+        Assert.Null(vm.Error);
+    }
+
     [GameFact]
     public async Task Saving_writes_a_backup_and_reloads_without_pending_edits()
     {

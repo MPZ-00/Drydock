@@ -22,7 +22,7 @@
                 <Button Content="{Binding SaveLabel}" IsEnabled="{Binding CanSave}" Padding="14,4" Margin="0,0,6,0" Click="OnSave"
                         ToolTip="Write the pending changes. A backup is made first." />
                 <Button Content="Discard" Padding="10,4" Margin="0,0,6,0" Click="OnDiscard" />
-                <Button Content="Backups" Padding="10,4" Margin="0,0,12,0" Click="OnBackups" IsEnabled="{Binding HasWorld}" />
+                <Button Content="Backups" Padding="10,4" Margin="0,0,12,0" Click="OnBackups" IsEnabled="{Binding CanOpenBackups}" />
                 <Menu VerticalAlignment="Center">
                     <MenuItem Header="Settings">
                         <MenuItem x:Name="ThemeMenu" Header="Theme">

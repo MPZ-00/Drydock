@@ -74,6 +74,19 @@ public class InventoryViewModelTests
     }
 
     [Fact]
+    public void Unchanged_rows_keep_their_list_so_typing_survives_a_preview()
+    {
+        var loaded = View(new RowView(Iron, "Iron", 10, 10, null, null));
+        var first = InventoryViewModel.Build(loaded, loaded, [], [], Name);
+        var preview = View(new RowView(Iron, "Iron", 10, 10, null, null)) with { Mass = 99 };
+
+        var second = InventoryViewModel.Build(loaded, preview, [], [], Name, previous: first);
+
+        Assert.Same(first.Rows, second.Rows);
+        Assert.Equal("99/100kg", second.MassText);
+    }
+
+    [Fact]
     public void Limits_turn_red_when_over()
     {
         var preview = View(new RowView(Iron, "Iron", 120, 120, null, null)) with { Mass = 120 };
