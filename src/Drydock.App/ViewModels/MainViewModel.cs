@@ -433,6 +433,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>Puts a backup back and reloads the save. Pending edits are dropped.</summary>
+    public async Task RestoreAsync(Backup backup)
+    {
+        var saveDir = Path.GetDirectoryName(LoadedSave!.File)!;
+        await Worker.Run(() => Backups.Restore(backup, saveDir));
+        await LoadAsync(LoadedSave);
+    }
+
     public void Dispose() => Worker.Dispose();
 }
 

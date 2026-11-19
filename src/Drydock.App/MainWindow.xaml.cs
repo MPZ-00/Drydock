@@ -98,6 +98,9 @@ public partial class MainWindow : Window
         }
     }
 
+    void OnBackups(object sender, RoutedEventArgs e) =>
+        new BackupsWindow(_vm) { Owner = this }.ShowDialog();
+
     async void OnDiscard(object sender, RoutedEventArgs e)
     {
         if (_vm.PendingCount > 0 && ConfirmLeave("discarding"))
