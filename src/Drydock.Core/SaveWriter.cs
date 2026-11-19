@@ -14,6 +14,8 @@ public static class SaveWriter
     /// <returns>The backup folder.</returns>
     public static string Write(SaveArchive edited, string targetPath)
     {
+        if (edited.IsPreview)
+            throw new InvalidOperationException("A preview can't be written.");
         if (GameRunning())
             throw new InvalidOperationException("Space Engineers 2 is running. Quit it completely, then run this again.");
         if (!edited.File.Verify(out var problem))

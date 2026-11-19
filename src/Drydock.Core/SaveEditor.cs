@@ -8,9 +8,9 @@ namespace Drydock.Core;
 /// </summary>
 public sealed class SaveEditor(SaveArchive archive, ItemCatalog? catalog = null)
 {
-    readonly record struct Splice(int Start, int End, byte[] Bytes);
+    readonly record struct Cut(int Start, int End, byte[] Bytes);
 
-    readonly List<Splice> _splices = [];
+    readonly List<Cut> _splices = [];
     readonly Dictionary<SerializedField, int> _counts = [];
 
     public SaveArchive Archive { get; } = archive;
@@ -39,17 +39,8 @@ public sealed class SaveEditor(SaveArchive archive, ItemCatalog? catalog = null)
         var end = inventory.ItemsField.End;
         if (UnitStacks(definition))
         {
-            byte[] bytes;
-            if (Template(definition) is { } template)
-            {
-                bytes = Archive.MainChunk[template.Field.Start..template.Field.End];
-                ItemCodec.Amount(1).CopyTo(bytes, template.Amount.Start - template.Field.Start);
-            }
-            else
-                bytes = ItemCodec.Stack(definition, 1);
-            for (int i = 0; i < (int)amount; i++)
-                Add(end, end, bytes);
-            ChangeCount(inventory, (int)amount);
+            AddStacks(inventory, definition, (int)amount,
+                Template(definition) is { } template ? StackBytes(template) : ItemCodec.Stack(definition, 1));
             return;
         }
         var existing = inventory.Items.FirstOrDefault(s => s.Definition == definition && !s.HasMetaData);
@@ -60,6 +51,26 @@ public sealed class SaveEditor(SaveArchive archive, ItemCatalog? catalog = null)
         }
         Add(end, end, ItemCodec.Stack(definition, amount));
         ChangeCount(inventory, +1);
+    }
+
+    /// <summary>Insert <paramref name="count"/> copies of a complete stack encoding at the end of the item list.</summary>
+    public void AddStacks(Inventory inventory, Guid definition, int count, byte[] stack)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(count);
+        if (stack.Length < 17 || new Guid(stack.AsSpan(1, 16)) != definition)
+            throw new ArgumentException("The stack encoding is not for this item.", nameof(stack));
+        var end = inventory.ItemsField.End;
+        for (int i = 0; i < count; i++)
+            Add(end, end, stack);
+        ChangeCount(inventory, count);
+    }
+
+    /// <summary>A stack's bytes with the amount set to 1, to add copies of it.</summary>
+    public byte[] StackBytes(ItemStack source)
+    {
+        var bytes = Archive.MainChunk[source.Field.Start..source.Field.End];
+        ItemCodec.Amount(1).CopyTo(bytes, source.Amount.Start - source.Field.Start);
+        return bytes;
     }
 
     /// <summary>Make the inventory hold exactly <paramref name="amount"/> of an item, adding or removing stacks as needed.</summary>
@@ -128,15 +139,18 @@ public sealed class SaveEditor(SaveArchive archive, ItemCatalog? catalog = null)
             if (overlaps && !sameInsertPoint)
                 throw new InvalidOperationException("Two edits touch the same bytes.");
         }
-        _splices.Add(new Splice(start, end, bytes));
+        _splices.Add(new Cut(start, end, bytes));
     }
 
     /// <summary>Apply all edits and return the re-parsed result. The editor's own archive is left as it was.</summary>
-    public SaveArchive Build()
+    public SaveArchive Build() => Archive.WithMainChunk(Splice());
+
+    /// <summary>The main chunk with all edits applied.</summary>
+    public byte[] Splice()
     {
-        var splices = new List<Splice>(_splices);
+        var splices = new List<Cut>(_splices);
         foreach (var (items, count) in _counts)
-            splices.Add(new Splice(items.Start, items.Start + 4, ItemCodec.Count(count)));
+            splices.Add(new Cut(items.Start, items.Start + 4, ItemCodec.Count(count)));
         // stable sort keeps several inserts at one point in the order they were made
         splices = [.. splices.OrderBy(s => s.Start)];
 
@@ -150,6 +164,6 @@ public sealed class SaveEditor(SaveArchive archive, ItemCatalog? catalog = null)
             pos = s.End;
         }
         output.Write(source, pos, source.Length - pos);
-        return Archive.WithMainChunk(output.ToArray());
+        return output.ToArray();
     }
 }
