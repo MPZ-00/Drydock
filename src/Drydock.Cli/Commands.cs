@@ -153,7 +153,10 @@ static class Commands
 
     static void PrintInventory(World w, int number, Inventory inv)
     {
-        Console.WriteLine($"#{number}  {Ref(w, inv)}");
+        var rules = RulesOf(w, inv);
+        var mass = $"{Mass(w, inv):0.##}{(rules?.MaxMass is { } max ? $"/{max:0.##}" : "")} kg";
+        var stacks = $"{inv.Items.Count}{(rules?.MaxStacks is { } most ? $"/{most}" : "")} stacks";
+        Console.WriteLine($"#{number}  {Ref(w, inv)}  ({mass}, {stacks})");
         foreach (var stack in inv.Items)
         {
             var name = w.Content.Items.Find(stack.Definition)?.Name ?? stack.Definition.ToString();
@@ -294,6 +297,12 @@ static class Commands
         Console.WriteLine("After the edit:");
         var after = new World(w.Path, edited, w.Content, Inventory.FindAll(edited), w.PlayerOwner);
         PrintInventory(after, n, after.Inventories[n]);
+        if (OverCapacity(w, inventory, after.Inventories[n]) is { } problem)
+        {
+            if (!force)
+                return Fail($"{problem} --force writes it anyway.");
+            Console.WriteLine($"{problem} Writing anyway because of --force.");
+        }
         if (dryRun)
         {
             Console.WriteLine("Dry run, nothing written.");
@@ -301,7 +310,7 @@ static class Commands
         }
         try
         {
-            var backup = SaveWriter.Write(edited, w.Path);
+            var backup = Status.Step("Writing save", () => SaveWriter.Write(edited, w.Path));
             Console.WriteLine($"Written. Backup: {backup}");
             return 0;
         }
@@ -309,6 +318,24 @@ static class Commands
         {
             return Fail(e.Message);
         }
+    }
+
+    static double Mass(World w, Inventory inv) =>
+        inv.Items.Sum(s => (double)(decimal)s.Amount.Value! * (w.Content.Items.Find(s.Definition)?.MassPerUnit ?? 0));
+
+    static InventoryRules? RulesOf(World w, Inventory inv) => w.Content.Rules(inv.Composite, inv.Slot);
+
+    /// <summary>Why the edit overfills the inventory, or null. An inventory already over its limit may still shrink.</summary>
+    static string? OverCapacity(World w, Inventory before, Inventory after)
+    {
+        if (RulesOf(w, before) is not { } rules)
+            return null;
+        double massBefore = Mass(w, before), massAfter = Mass(w, after);
+        if (rules.MaxMass is { } maxMass && massAfter > maxMass && massAfter > massBefore)
+            return $"That's {massAfter:0.##} kg, {Ref(w, after)} holds {maxMass:0.##} kg.";
+        if (rules.MaxStacks is { } maxStacks && after.Items.Count > maxStacks && after.Items.Count > before.Items.Count)
+            return $"That's {after.Items.Count} stacks, {Ref(w, after)} holds {maxStacks}.";
+        return null;
     }
 
     static int Fail(string message)

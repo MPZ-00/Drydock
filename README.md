@@ -32,6 +32,10 @@ Blocks sharing a name on one grid are numbered by their position, like `"Aquila/
 
 Tools, guns and power modules take one stack per unit, like the game keeps them. New ones copy their extra data (ammo, charge) from one already in the save.
 
+Edits that push an inventory over its weight or stack limit are refused, `--force` writes them anyway. The game itself doesn't stop an overfilled inventory from loading.
+
+What Drydock reads from the game's content is cached in `%LocalAppData%\Drydock\cache` and rebuilt after a game update.
+
 Writing refuses while the game runs. Every write backs up `savegame.vrb` to `%LocalAppData%\Drydock\backups` first.
 
 ## How edits work
