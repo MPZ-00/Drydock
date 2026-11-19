@@ -21,9 +21,10 @@ public sealed partial class GameContent
         Dictionary<Guid, string> SlotKeys,
         Dictionary<Guid, Dictionary<Guid, Guid>> CompositeSlots,
         Dictionary<Guid, InventoryRules> InventoryRules,
-        Dictionary<Guid, Guid> CompositeBases);
+        Dictionary<Guid, Guid> CompositeBases,
+        Dictionary<Guid, int> AmmoCapacity);
 
-    const int SnapshotFormat = 1;
+    const int SnapshotFormat = 2;
 
     public static readonly string CacheDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Drydock", "cache");
@@ -97,6 +98,7 @@ public sealed partial class GameContent
         var slotKeys = new Dictionary<Guid, List<string>>();
         var compositeSlots = new Dictionary<Guid, Dictionary<Guid, Guid>>();
         var inventoryRules = new Dictionary<Guid, InventoryRules>();
+        var ammoCapacity = new Dictionary<Guid, int>();
         foreach (var file in Directory.EnumerateFiles(content, "*.def", SearchOption.AllDirectories))
         {
             var text = File.ReadAllText(file);
@@ -118,6 +120,8 @@ public sealed partial class GameContent
                 compositeSlots[guid] = ComponentDefinitions(JsonNode.Parse(text)?["$Value"]?["Components"]);
             else if (text.Contains("InventoryDefinitionObjectBuilder\"", StringComparison.Ordinal))
                 inventoryRules[guid] = Rules(JsonNode.Parse(text)?["$Value"]);
+            else if (text.Contains("AmmoDefinitionObjectBuilder\"", StringComparison.Ordinal) && Ammo(JsonNode.Parse(text)?["$Value"]) is { } ammo)
+                ammoCapacity[ammo.Projectile] = Math.Max(ammo.Capacity, ammoCapacity.GetValueOrDefault(ammo.Projectile));
         }
         var definitions = DefinitionIndex.Load(Path.Combine(content, "definitionsets.vrb"));
         var bases = definitions.All.Where(d => d.BaseGuid != Guid.Empty && compositeSlots.ContainsKey(d.Guid))
@@ -128,7 +132,8 @@ public sealed partial class GameContent
             slotKeys.ToDictionary(kv => kv.Key, kv => kv.Value.OrderBy(KeyRank).First()),
             compositeSlots,
             inventoryRules,
-            bases);
+            bases,
+            ammoCapacity);
     }
 
     // the smelter's output is also keyed InventoryStockpile
@@ -169,6 +174,15 @@ public sealed partial class GameContent
         int? maxStacks = value?["MaxStacks"] is JsonValue s && s.TryGetValue<int>(out var stacks) ? stacks : null;
         return new InventoryRules(types, [.. guids], maxMass, maxStacks);
     }
+
+    static (Guid Projectile, int Capacity)? Ammo(JsonNode? value) =>
+        value?["ProjectileDefinition"] is JsonValue p && Guid.TryParse(p.ToString(), out var projectile)
+            && value["Capacity"] is JsonValue c && c.TryGetValue<int>(out var capacity)
+            ? (projectile, capacity) : null;
+
+    /// <summary>Rounds a full magazine holds for guns firing this projectile.</summary>
+    public int? AmmoCapacity(Guid projectile) =>
+        _snapshot.AmmoCapacity?.TryGetValue(projectile, out var capacity) == true ? capacity : null;
 
     /// <summary>What a slot of an entity accepts, following the composite's base chain. Null when the game data doesn't say.</summary>
     public InventoryRules? Rules(Guid? composite, Guid slot)

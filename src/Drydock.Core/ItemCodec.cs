@@ -26,6 +26,14 @@ public static class ItemCodec
     {
         if (value <= 0)
             throw new ArgumentOutOfRangeException(nameof(value), "Amount must be positive.");
+        return Fixed(value);
+    }
+
+    /// <summary>A FixedPoint value, laid out like an amount but allowed to be 0.</summary>
+    public static byte[] Fixed(decimal value)
+    {
+        if (value < 0)
+            throw new ArgumentOutOfRangeException(nameof(value));
         // FixedPoint keeps 6 decimal places; normalize away trailing zeros like the game's own values
         value = decimal.Round(value, 6) / 1.000000000000000000000000000000000m;
         var bytes = new byte[16];

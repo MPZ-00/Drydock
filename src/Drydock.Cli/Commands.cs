@@ -5,82 +5,24 @@ namespace Drydock.Cli;
 
 static class Commands
 {
-    static readonly string SaveRoot = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SpaceEngineers2", "AppData", "SaveGames");
-
-    sealed record SaveInfo(string Name, string File, DateTime Written);
-
-    /// <summary>Saves in the game's SaveGames folder, newest first.</summary>
-    static List<SaveInfo> ListSaves()
-    {
-        if (!Directory.Exists(SaveRoot))
-            return [];
-        return Directory.EnumerateDirectories(SaveRoot)
-            .Select(d => Path.Combine(d, "savegame.vrb"))
-            .Where(File.Exists)
-            .Select(f => new SaveInfo(Path.GetFileName(Path.GetDirectoryName(f))!, f, File.GetLastWriteTime(f)))
-            .OrderByDescending(s => s.Written)
-            .ToList();
-    }
-
     public static void Saves()
     {
-        var saves = ListSaves();
+        var saves = Core.Saves.List();
         for (int i = 0; i < saves.Count; i++)
             Console.WriteLine($"{i + 1,3}  {saves[i].Written:yyyy-MM-dd HH:mm}  {saves[i].Name}");
-        Console.WriteLine(saves.Count == 0 ? $"No saves in {SaveRoot}" : "Pick a save by its number or part of its name.");
+        Console.WriteLine(saves.Count == 0 ? $"No saves in {Core.Saves.Root}" : "Pick a save by its number or part of its name.");
     }
 
-    /// <summary>A save folder path, a folder name in SaveGames, its number from 'saves', or a unique part of its name.</summary>
-    public static string ResolveSave(string save)
-    {
-        if (Directory.Exists(save) && File.Exists(Path.Combine(save, "savegame.vrb")))
-            return Path.Combine(save, "savegame.vrb");
-        var saves = ListSaves();
-        var exact = saves.FirstOrDefault(s => s.Name.Equals(save, StringComparison.OrdinalIgnoreCase));
-        if (exact != null)
-            return exact.File;
-        if (int.TryParse(save, out int n) && n >= 1 && n <= saves.Count)
-            return saves[n - 1].File;
-        var matches = saves.Where(s => s.Name.Contains(save, StringComparison.OrdinalIgnoreCase)).ToList();
-        if (matches.Count == 1)
-            return matches[0].File;
-        var hint = matches.Count == 0
-            ? "Run 'saves' to see them."
-            : "It matches: " + string.Join(", ", matches.Take(8).Select(s => $"\"{s.Name}\""));
-        throw new FileNotFoundException($"No single save matches '{save}'. {hint}");
-    }
-
-    sealed record World(string Path, SaveArchive Archive, GameContent Content, IReadOnlyList<Inventory> Inventories, int? PlayerOwner)
-    {
-        /// <summary>Block names as shown and typed, numbered where one object has several blocks of the same name.</summary>
-        public Dictionary<Inventory, string> BlockLabels { get; } = Label(Content, Inventories);
-    }
+    public static string ResolveSave(string save) => Core.Saves.Resolve(save);
 
     static World Load(string save)
     {
         var path = ResolveSave(save);
+        var file = new FileInfo(path);
+        file.Refresh();
         var archive = Status.Step("Reading save", () => SaveArchive.Load(path));
         var content = Status.Step("Reading game content", () => GameContent.Load(GameInstall.RootDir));
-        var inventories = Inventory.FindAll(archive);
-        return new World(path, archive, content, inventories, Inventory.PlayerOwnerId(inventories));
-    }
-
-    // grid positions survive the game saving, walk order does not
-    static Dictionary<Inventory, string> Label(GameContent content, IReadOnlyList<Inventory> inventories)
-    {
-        var labels = new Dictionary<Inventory, string>(ReferenceEqualityComparer.Instance);
-        var objectIds = new Dictionary<WorldObject, int>(ReferenceEqualityComparer.Instance);
-        var withBlock = inventories.Where(i => i.Block != null);
-        foreach (var group in withBlock.GroupBy(i => (objectIds.TryAdd(i.Object, objectIds.Count) ? objectIds[i.Object] : objectIds[i.Object], content.Localize(i.Block!))))
-        {
-            var name = group.Key.Item2;
-            var blocks = group.Select(i => i.Position).Distinct()
-                .OrderBy(p => p?.X).ThenBy(p => p?.Y).ThenBy(p => p?.Z).ToList();
-            foreach (var inv in group)
-                labels[inv] = blocks.Count < 2 ? name : $"{name} ({blocks.IndexOf(inv.Position) + 1})";
-        }
-        return labels;
+        return World.From(path, archive, content, file);
     }
 
     public static void Items(string? query)
@@ -92,23 +34,11 @@ static class Commands
         Console.WriteLine($"{items.Count} items");
     }
 
-    static string ObjectName(World w, WorldObject o) => o.IsPlayer ? "player" : w.Content.Localize(o.Name);
-
-    /// <summary>How to name this inventory on the command line: player, player:datapads, Aquila/Cargo Container.</summary>
-    static string Ref(World w, Inventory inv)
-    {
-        var name = ObjectName(w, inv.Object);
-        if (inv.Block != null)
-            name += "/" + w.BlockLabels[inv];
-        var slot = w.Content.SlotName(inv.Slot);
-        return slot == "main" ? name : $"{name}:{slot}";
-    }
-
     static string Kind(World w, WorldObject o) => o switch
     {
         { IsPlayer: true } => "Player",
         { Kind: ObjectKind.Character } => "Character",
-        _ => o.Kind + (w.PlayerOwner != null && o.OwnerId == w.PlayerOwner ? "" : " (not yours)"),
+        _ => o.Kind + (w.IsYours(o) ? "" : " (not yours)"),
     };
 
     public static void Inventories(string save, string? target, bool all)
@@ -116,7 +46,7 @@ static class Commands
         var w = Load(save);
         if (target != null)
         {
-            var matches = Match(w, target);
+            var matches = w.Match(target);
             if (matches.Count == 0)
                 Console.Error.WriteLine($"No inventory matches '{target}'.");
             foreach (int n in matches)
@@ -124,14 +54,13 @@ static class Commands
             return;
         }
 
-        bool Yours(WorldObject o) => o.IsPlayer || (w.PlayerOwner != null && o.OwnerId == w.PlayerOwner && o.Kind != ObjectKind.Character);
         var numbered = w.Inventories.Select((inv, n) => (inv, n));
         var groups = numbered.GroupBy(x => x.inv.Object, ReferenceEqualityComparer.Instance)
             .Select(g => (Object: (WorldObject)g.Key!, Items: g.ToList()))
-            .Where(g => all || Yours(g.Object))
+            .Where(g => all || w.IsYours(g.Object))
             .OrderByDescending(g => g.Object.IsPlayer)
             .ThenBy(g => g.Object.Kind)
-            .ThenBy(g => ObjectName(w, g.Object), StringComparer.OrdinalIgnoreCase);
+            .ThenBy(g => w.ObjectName(g.Object), StringComparer.OrdinalIgnoreCase);
         int hidden = 0;
         foreach (var g in groups)
         {
@@ -139,11 +68,11 @@ static class Commands
             hidden += g.Items.Count - shown.Count;
             if (shown.Count == 0)
                 continue;
-            Console.WriteLine($"{Kind(w, g.Object)}: {ObjectName(w, g.Object)}");
+            Console.WriteLine($"{Kind(w, g.Object)}: {w.ObjectName(g.Object)}");
             foreach (var (inv, n) in shown)
             {
                 int count = inv.Items.Count;
-                Console.WriteLine($"  #{n,-5} {Ref(w, inv),-60} {(count == 0 ? "empty" : count == 1 ? "1 stack" : $"{count} stacks")}");
+                Console.WriteLine($"  #{n,-5} {w.Ref(inv),-60} {(count == 0 ? "empty" : count == 1 ? "1 stack" : $"{count} stacks")}");
             }
         }
         if (!all)
@@ -153,10 +82,10 @@ static class Commands
 
     static void PrintInventory(World w, int number, Inventory inv)
     {
-        var rules = RulesOf(w, inv);
-        var mass = $"{Mass(w, inv):0.##}{(rules?.MaxMass is { } max ? $"/{max:0.##}" : "")}kg";
+        var rules = w.Rules(inv);
+        var mass = $"{w.Mass(inv):0.##}{(rules?.MaxMass is { } max ? $"/{max:0.##}" : "")}kg";
         var stacks = $"{inv.Items.Count}{(rules?.MaxStacks is { } most ? $"/{most}" : "")} stacks";
-        Console.WriteLine($"#{number}  {Ref(w, inv)}  ({mass}, {stacks})");
+        Console.WriteLine($"#{number}  {w.Ref(inv)}  ({mass}, {stacks})");
         foreach (var stack in inv.Items)
         {
             var name = w.Content.Items.Find(stack.Definition)?.Name ?? stack.Definition.ToString();
@@ -166,38 +95,6 @@ static class Commands
         }
         if (inv.Items.Count == 0)
             Console.WriteLine("    (empty)");
-    }
-
-    /// <summary>
-    /// Inventories a target names: #number, player[:slot], or object[/block][:slot] where each part is an exact name
-    /// or, failing that, part of one.
-    /// </summary>
-    static List<int> Match(World w, string target)
-    {
-        var all = Enumerable.Range(0, w.Inventories.Count).ToList();
-        if (int.TryParse(target.TrimStart('#'), out int number))
-            return number >= 0 && number < w.Inventories.Count ? [number] : [];
-
-        string? slot = null;
-        int colon = target.LastIndexOf(':');
-        if (colon > 0 && all.Any(n => w.Content.SlotName(w.Inventories[n].Slot).Equals(target[(colon + 1)..], StringComparison.OrdinalIgnoreCase)))
-            (target, slot) = (target[..colon], target[(colon + 1)..]);
-        int slash = target.IndexOf('/');
-        var objectPart = slash < 0 ? target : target[..slash];
-        var blockPart = slash < 0 ? null : target[(slash + 1)..];
-
-        var hits = Pick(all, n => ObjectName(w, w.Inventories[n].Object), objectPart);
-        if (blockPart != null)
-            hits = Pick(hits, n => w.BlockLabels.GetValueOrDefault(w.Inventories[n], ""), blockPart);
-        if (slot != null)
-            hits = hits.Where(n => w.Content.SlotName(w.Inventories[n].Slot).Equals(slot, StringComparison.OrdinalIgnoreCase)).ToList();
-        return hits;
-    }
-
-    static List<int> Pick(List<int> candidates, Func<int, string> name, string query)
-    {
-        var exact = candidates.Where(n => name(n).Equals(query, StringComparison.OrdinalIgnoreCase)).ToList();
-        return exact.Count > 0 ? exact : candidates.Where(n => name(n).Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
     }
 
     public enum EditKind { Set, Add, Remove }
@@ -222,47 +119,20 @@ static class Commands
         }
         var item = items[0];
 
-        bool? Accepts(int i) => w.Content.Rules(w.Inventories[i].Composite, w.Inventories[i].Slot)?.Accepts(item);
-
-        var matches = Match(w, target);
-        // no slot named: let the game's whitelists pick
-        if (matches.Count > 1 && !target.Contains(':'))
-        {
-            var accepting = matches.Where(i => Accepts(i) == true).ToList();
-            if (accepting.Count > 0)
-                matches = accepting;
-            var slot = item.Kind switch
-            {
-                "Consumable" => "consumables",
-                "Datapad" => "datapads",
-                "Quest" => "quest",
-                "Schematic" => "schematics",
-                _ => "main",
-            };
-            var preferred = matches.Where(i => w.Content.SlotName(w.Inventories[i].Slot) == slot).ToList();
-            if (preferred.Count > 0 && matches.Count > 1)
-                matches = preferred;
-        }
+        var matches = w.Route(w.Match(target), item, slotNamed: target.Contains(':'));
         if (matches.Count != 1)
         {
             Console.Error.WriteLine(matches.Count == 0
                 ? $"No inventory matches '{target}'. Run 'inventories' to see them."
                 : $"'{target}' matches {matches.Count} inventories, use one of these:");
             foreach (int m in matches.Take(15))
-                Console.Error.WriteLine($"    #{m,-5} {Ref(w, w.Inventories[m])}");
+                Console.Error.WriteLine($"    #{m,-5} {w.Ref(w.Inventories[m])}");
             return 1;
         }
         int n = matches[0];
         var inventory = w.Inventories[n];
-        if (kind != EditKind.Remove && amount > 0 && Accepts(n) == false && !force)
-        {
-            var sameBlockSlot = Enumerable.Range(0, w.Inventories.Count).FirstOrDefault(i => i != n && Accepts(i) == true
-                && ReferenceEquals(w.Inventories[i].Object, inventory.Object) && w.Inventories[i].Position == inventory.Position
-                && w.Inventories[i].Block == inventory.Block, -1);
-            return Fail($"{Ref(w, inventory)} doesn't take {item.Name}."
-                + (sameBlockSlot >= 0 ? $" It goes in \"{Ref(w, w.Inventories[sameBlockSlot])}\"." : "")
-                + " Use --force to override it.");
-        }
+        if (kind != EditKind.Remove && amount > 0 && w.Accepts(n, item) == false && !force)
+            return Fail($"{w.Rejection(n, item)} Use --force to override it.");
 
         var editor = new SaveEditor(w.Archive, w.Content.Items);
         try
@@ -276,7 +146,7 @@ static class Commands
                     editor.SetTotal(inventory, item.Guid, amount);
                     break;
                 case EditKind.Remove when inventory.Items.All(s => s.Definition != item.Guid):
-                    return Fail($"{Ref(w, inventory)} holds no {item.Name}.");
+                    return Fail($"{w.Ref(inventory)} holds no {item.Name}.");
                 case EditKind.Remove:
                     editor.SetTotal(inventory, item.Guid, 0);
                     break;
@@ -288,15 +158,15 @@ static class Commands
         }
         if (!editor.HasChanges)
         {
-            Console.WriteLine($"Nothing to change, {Ref(w, inventory)} already holds {amount} {item.Name}.");
+            Console.WriteLine($"Nothing to change, {w.Ref(inventory)} already holds {amount} {item.Name}.");
             return 0;
         }
 
         var edited = Status.Step("Building the edited save", editor.Build);
         Console.WriteLine("After the edit:");
-        var after = new World(w.Path, edited, w.Content, Inventory.FindAll(edited), w.PlayerOwner);
+        var after = w.WithArchive(edited);
         PrintInventory(after, n, after.Inventories[n]);
-        if (OverCapacity(w, inventory, after.Inventories[n]) is { } problem)
+        if (w.OverCapacity(inventory, after.Inventories[n]) is { } problem)
         {
             if (!force)
                 return Fail($"{problem} Use --force to override it.");
@@ -317,24 +187,6 @@ static class Commands
         {
             return Fail(e.Message);
         }
-    }
-
-    static double Mass(World w, Inventory inv) =>
-        inv.Items.Sum(s => (double)(decimal)s.Amount.Value! * (w.Content.Items.Find(s.Definition)?.MassPerUnit ?? 0));
-
-    static InventoryRules? RulesOf(World w, Inventory inv) => w.Content.Rules(inv.Composite, inv.Slot);
-
-    /// <summary>Why the edit overfills the inventory, or null. An inventory already over its limit may still shrink.</summary>
-    static string? OverCapacity(World w, Inventory before, Inventory after)
-    {
-        if (RulesOf(w, before) is not { } rules)
-            return null;
-        double massBefore = Mass(w, before), massAfter = Mass(w, after);
-        if (rules.MaxMass is { } maxMass && massAfter > maxMass && massAfter > massBefore)
-            return $"{Ref(w, after)} holds {maxMass:0.##}kg max.";
-        if (rules.MaxStacks is { } maxStacks && after.Items.Count > maxStacks && after.Items.Count > before.Items.Count)
-            return $"{Ref(w, after)} holds {maxStacks} stacks max.";
-        return null;
     }
 
     static int Fail(string message)

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>Drydock</AssemblyName>
+    <RootNamespace>Drydock.App</RootNamespace>
+    <Version>0.2.0</Version>
+    <!-- ThemeMode (the Fluent light/dark theme) is marked experimental in .NET 9 -->
+    <NoWarn>$(NoWarn);WPF0001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Drydock.Core\Drydock.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Drydock.App.Tests" />
+  </ItemGroup>
+
+</Project>
