@@ -8,108 +8,245 @@ static class Commands
     static readonly string SaveRoot = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SpaceEngineers2", "AppData", "SaveGames");
 
-    /// <summary>A save folder path, or the name of a folder in the game's SaveGames.</summary>
+    sealed record SaveInfo(string Name, string File, DateTime Written);
+
+    /// <summary>Saves in the game's SaveGames folder, newest first.</summary>
+    static List<SaveInfo> ListSaves()
+    {
+        if (!Directory.Exists(SaveRoot))
+            return [];
+        return Directory.EnumerateDirectories(SaveRoot)
+            .Select(d => Path.Combine(d, "savegame.vrb"))
+            .Where(File.Exists)
+            .Select(f => new SaveInfo(Path.GetFileName(Path.GetDirectoryName(f))!, f, File.GetLastWriteTime(f)))
+            .OrderByDescending(s => s.Written)
+            .ToList();
+    }
+
+    public static void Saves()
+    {
+        var saves = ListSaves();
+        for (int i = 0; i < saves.Count; i++)
+            Console.WriteLine($"{i + 1,3}  {saves[i].Written:yyyy-MM-dd HH:mm}  {saves[i].Name}");
+        Console.WriteLine(saves.Count == 0 ? $"No saves in {SaveRoot}" : "Pick a save by its number or part of its name.");
+    }
+
+    /// <summary>A save folder path, a folder name in SaveGames, its number from 'saves', or a unique part of its name.</summary>
     public static string ResolveSave(string save)
     {
-        var dir = Directory.Exists(save) ? save : Path.Combine(SaveRoot, save);
-        var file = Path.Combine(dir, "savegame.vrb");
-        if (!File.Exists(file))
-            throw new FileNotFoundException($"No savegame.vrb in {dir}");
-        return file;
+        if (Directory.Exists(save) && File.Exists(Path.Combine(save, "savegame.vrb")))
+            return Path.Combine(save, "savegame.vrb");
+        var saves = ListSaves();
+        var exact = saves.FirstOrDefault(s => s.Name.Equals(save, StringComparison.OrdinalIgnoreCase));
+        if (exact != null)
+            return exact.File;
+        if (int.TryParse(save, out int n) && n >= 1 && n <= saves.Count)
+            return saves[n - 1].File;
+        var matches = saves.Where(s => s.Name.Contains(save, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (matches.Count == 1)
+            return matches[0].File;
+        var hint = matches.Count == 0
+            ? "Run 'saves' to see them."
+            : "It matches: " + string.Join(", ", matches.Take(8).Select(s => $"\"{s.Name}\""));
+        throw new FileNotFoundException($"No single save matches '{save}'. {hint}");
+    }
+
+    sealed record World(string Path, SaveArchive Archive, GameContent Content, IReadOnlyList<Inventory> Inventories, int? PlayerOwner);
+
+    static World Load(string save)
+    {
+        var path = ResolveSave(save);
+        var archive = Status.Step("Reading save", () => SaveArchive.Load(path));
+        var content = Status.Step("Reading game content", () => GameContent.Load(GameInstall.RootDir));
+        var inventories = Inventory.FindAll(archive);
+        return new World(path, archive, content, inventories, Inventory.PlayerOwnerId(inventories));
     }
 
     public static void Items(string? query)
     {
-        var catalog = ItemCatalog.Load(GameInstall.RootDir);
+        var catalog = Status.Step("Reading game content", () => GameContent.Load(GameInstall.RootDir)).Items;
         var items = query == null ? catalog.Items.ToList() : catalog.Search(query).ToList();
         foreach (var i in items.OrderBy(i => i.Kind).ThenBy(i => i.Type).ThenBy(i => i.Name))
             Console.WriteLine($"{i.Guid}  {i.Kind,-10} {i.Type,-10} {i.Name}");
         Console.WriteLine($"{items.Count} items");
     }
 
-    public static void Inventories(string save, string? ownerFilter, bool showEmpty)
+    static string ObjectName(World w, WorldObject o) => o.IsPlayer ? "player" : w.Content.Localize(o.Name);
+
+    /// <summary>How to name this inventory on the command line: player, player:datapads, Aquila/Cargo Container.</summary>
+    static string Ref(World w, Inventory inv)
     {
-        var archive = SaveArchive.Load(ResolveSave(save));
-        var catalog = ItemCatalog.Load(GameInstall.RootDir);
-        var all = Inventory.FindAll(archive);
-        for (int n = 0; n < all.Count; n++)
-        {
-            var inv = all[n];
-            if (ownerFilter != null && !inv.Owner.Contains(ownerFilter, StringComparison.OrdinalIgnoreCase))
-                continue;
-            if (inv.Items.Count == 0 && !showEmpty)
-                continue;
-            PrintInventory(n, inv, catalog);
-        }
-        Console.WriteLine("Use the #number to pick an inventory in set, add and remove.");
+        var name = ObjectName(w, inv.Object);
+        if (inv.Block != null)
+            name += "/" + w.Content.Localize(inv.Block);
+        var slot = w.Content.SlotName(inv.Slot);
+        return slot == "main" ? name : $"{name}:{slot}";
     }
 
-    static void PrintInventory(int number, Inventory inv, ItemCatalog catalog)
+    static string Kind(World w, WorldObject o) => o switch
     {
-        Console.WriteLine($"#{number}  {inv.Owner}  (slot {inv.Slot.ToString()[..8]})");
+        { IsPlayer: true } => "Player",
+        { Kind: ObjectKind.Character } => "Character",
+        _ => o.Kind + (w.PlayerOwner != null && o.OwnerId == w.PlayerOwner ? "" : " (not yours)"),
+    };
+
+    public static void Inventories(string save, string? target, bool all)
+    {
+        var w = Load(save);
+        if (target != null)
+        {
+            var matches = Match(w, target);
+            if (matches.Count == 0)
+                Console.Error.WriteLine($"No inventory matches '{target}'.");
+            foreach (int n in matches)
+                PrintInventory(w, n, w.Inventories[n]);
+            return;
+        }
+
+        bool Yours(WorldObject o) => o.IsPlayer || (w.PlayerOwner != null && o.OwnerId == w.PlayerOwner && o.Kind != ObjectKind.Character);
+        var numbered = w.Inventories.Select((inv, n) => (inv, n));
+        var groups = numbered.GroupBy(x => x.inv.Object, ReferenceEqualityComparer.Instance)
+            .Select(g => (Object: (WorldObject)g.Key!, Items: g.ToList()))
+            .Where(g => all || Yours(g.Object))
+            .OrderByDescending(g => g.Object.IsPlayer)
+            .ThenBy(g => g.Object.Kind)
+            .ThenBy(g => ObjectName(w, g.Object), StringComparer.OrdinalIgnoreCase);
+        int hidden = 0;
+        foreach (var g in groups)
+        {
+            var shown = g.Items.Where(x => all || x.inv.Items.Count > 0 || g.Object.IsPlayer).ToList();
+            hidden += g.Items.Count - shown.Count;
+            if (shown.Count == 0)
+                continue;
+            Console.WriteLine($"{Kind(w, g.Object)}: {ObjectName(w, g.Object)}");
+            foreach (var (inv, n) in shown)
+            {
+                int count = inv.Items.Count;
+                Console.WriteLine($"  #{n,-5} {Ref(w, inv),-60} {(count == 0 ? "empty" : count == 1 ? "1 stack" : $"{count} stacks")}");
+            }
+        }
+        if (!all)
+            Console.WriteLine($"Showing your character and grids{(hidden > 0 ? $", {hidden} empty inventories hidden" : "")}. --all shows everything.");
+        Console.WriteLine("Show one with: inventories <save> <name or #number>");
+    }
+
+    static void PrintInventory(World w, int number, Inventory inv)
+    {
+        Console.WriteLine($"#{number}  {Ref(w, inv)}");
         foreach (var stack in inv.Items)
         {
-            var name = catalog.Find(stack.Definition)?.Name ?? stack.Definition.ToString();
+            var name = w.Content.Items.Find(stack.Definition)?.Name ?? stack.Definition.ToString();
             var amount = Convert.ToString(stack.Amount.Value, CultureInfo.InvariantCulture);
             var meta = stack.HasMetaData ? $"  {stack.MetaData!.GetShortValueString()}" : "";
             Console.WriteLine($"    {amount,10}  {name}{meta}");
         }
+        if (inv.Items.Count == 0)
+            Console.WriteLine("    (empty)");
+    }
+
+    /// <summary>
+    /// Inventories a target names: #number, player[:slot], or object[/block][:slot] where each part is an exact name
+    /// or, failing that, part of one.
+    /// </summary>
+    static List<int> Match(World w, string target)
+    {
+        var all = Enumerable.Range(0, w.Inventories.Count).ToList();
+        if (int.TryParse(target.TrimStart('#'), out int number))
+            return number >= 0 && number < w.Inventories.Count ? [number] : [];
+
+        string? slot = null;
+        int colon = target.LastIndexOf(':');
+        if (colon > 0 && all.Any(n => w.Content.SlotName(w.Inventories[n].Slot).Equals(target[(colon + 1)..], StringComparison.OrdinalIgnoreCase)))
+            (target, slot) = (target[..colon], target[(colon + 1)..]);
+        int slash = target.IndexOf('/');
+        var objectPart = slash < 0 ? target : target[..slash];
+        var blockPart = slash < 0 ? null : target[(slash + 1)..];
+
+        var hits = Pick(all, n => ObjectName(w, w.Inventories[n].Object), objectPart);
+        if (blockPart != null)
+            hits = Pick(hits, n => w.Inventories[n].Block is { } b ? w.Content.Localize(b) : "", blockPart);
+        if (slot != null)
+            hits = hits.Where(n => w.Content.SlotName(w.Inventories[n].Slot).Equals(slot, StringComparison.OrdinalIgnoreCase)).ToList();
+        return hits;
+    }
+
+    static List<int> Pick(List<int> candidates, Func<int, string> name, string query)
+    {
+        var exact = candidates.Where(n => name(n).Equals(query, StringComparison.OrdinalIgnoreCase)).ToList();
+        return exact.Count > 0 ? exact : candidates.Where(n => name(n).Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
     }
 
     public enum EditKind { Set, Add, Remove }
 
-    /// <summary>One inventory edit from the command line. Amount 0 with set removes the stack.</summary>
-    public static int Edit(EditKind kind, string save, string inventoryNumber, string itemQuery, string? amountText, bool dryRun)
+    /// <summary>One inventory edit from the command line. Amount 0 with set removes the item.</summary>
+    public static int Edit(EditKind kind, string save, string target, string itemQuery, string? amountText, bool dryRun)
     {
-        var path = ResolveSave(save);
-        var archive = SaveArchive.Load(path);
-        var catalog = ItemCatalog.Load(GameInstall.RootDir);
-        var all = Inventory.FindAll(archive);
-        if (!int.TryParse(inventoryNumber.TrimStart('#'), out int n) || n < 0 || n >= all.Count)
-            return Fail($"No inventory #{inventoryNumber}. Run 'inventories' to see the numbers.");
-        var inventory = all[n];
-
-        var matches = catalog.Search(itemQuery);
-        if (matches.Count != 1)
-        {
-            Console.Error.WriteLine(matches.Count == 0 ? $"No item matches '{itemQuery}'." : $"'{itemQuery}' matches {matches.Count} items, be more specific:");
-            foreach (var m in matches.Take(15))
-                Console.Error.WriteLine($"    {m.Name}  ({m.Key})");
-            return 1;
-        }
-        var item = matches[0];
-
         decimal amount = 0;
         if (kind != EditKind.Remove && !decimal.TryParse(amountText, NumberStyles.Number, CultureInfo.InvariantCulture, out amount))
             return Fail($"'{amountText}' is not an amount. Use a dot for decimals.");
         if (amount < 0 || (kind == EditKind.Add && amount == 0))
             return Fail("Amount must be positive.");
 
-        var editor = new SaveEditor(archive);
-        var stacks = inventory.Items.Where(s => s.Definition == item.Guid).ToList();
-        switch (kind)
+        var w = Load(save);
+        var items = w.Content.Items.Search(itemQuery);
+        if (items.Count != 1)
         {
-            case EditKind.Add:
-                editor.AddItem(inventory, item.Guid, amount);
-                break;
-            case EditKind.Set when stacks.Count == 0:
-                if (amount > 0)
+            Console.Error.WriteLine(items.Count == 0 ? $"No item matches '{itemQuery}'." : $"'{itemQuery}' matches {items.Count} items, be more specific:");
+            foreach (var m in items.Take(15))
+                Console.Error.WriteLine($"    {m.Name}  ({m.Key})");
+            return 1;
+        }
+        var item = items[0];
+
+        var matches = Match(w, target);
+        // "player" or a block with input and output: pick the slot the item belongs in unless one is named
+        if (matches.Count > 1 && !target.Contains(':'))
+        {
+            var slot = item.Kind switch
+            {
+                "Consumable" => "consumables",
+                "Datapad" => "datapads",
+                "Quest" => "quest",
+                "Schematic" => "schematics",
+                _ => "main",
+            };
+            var preferred = matches.Where(n => w.Content.SlotName(w.Inventories[n].Slot) == slot).ToList();
+            if (preferred.Count > 0)
+                matches = preferred;
+        }
+        if (matches.Count != 1)
+        {
+            Console.Error.WriteLine(matches.Count == 0
+                ? $"No inventory matches '{target}'. Run 'inventories' to see them."
+                : $"'{target}' matches {matches.Count} inventories, use one of these:");
+            foreach (int m in matches.Take(15))
+                Console.Error.WriteLine($"    #{m,-5} {Ref(w, w.Inventories[m])}");
+            return 1;
+        }
+        int n = matches[0];
+        var inventory = w.Inventories[n];
+
+        var editor = new SaveEditor(w.Archive, w.Content.Items);
+        try
+        {
+            switch (kind)
+            {
+                case EditKind.Add:
                     editor.AddItem(inventory, item.Guid, amount);
-                break;
-            case EditKind.Set when stacks.Count > 1:
-                return Fail($"#{n} has {stacks.Count} stacks of {item.Name}; set needs exactly one. Use remove and add instead.");
-            case EditKind.Set when amount == 0:
-                editor.Remove(inventory, stacks[0]);
-                break;
-            case EditKind.Set:
-                editor.SetAmount(stacks[0], amount);
-                break;
-            case EditKind.Remove when stacks.Count == 0:
-                return Fail($"#{n} holds no {item.Name}.");
-            case EditKind.Remove:
-                foreach (var stack in stacks)
-                    editor.Remove(inventory, stack);
-                break;
+                    break;
+                case EditKind.Set:
+                    editor.SetTotal(inventory, item.Guid, amount);
+                    break;
+                case EditKind.Remove when inventory.Items.All(s => s.Definition != item.Guid):
+                    return Fail($"{Ref(w, inventory)} holds no {item.Name}.");
+                case EditKind.Remove:
+                    editor.SetTotal(inventory, item.Guid, 0);
+                    break;
+            }
+        }
+        catch (ArgumentException e)
+        {
+            return Fail($"{item.Name}: {e.Message}");
         }
         if (!editor.HasChanges)
         {
@@ -117,19 +254,19 @@ static class Commands
             return 0;
         }
 
-        var edited = editor.Build();
-        var after = Inventory.FindAll(edited)[n];
+        var edited = Status.Step("Building the edited save", editor.Build);
         Console.WriteLine("After the edit:");
-        PrintInventory(n, after, catalog);
+        var after = Inventory.FindAll(edited);
+        PrintInventory(w with { Inventories = after }, n, after[n]);
         if (dryRun)
         {
-            Console.WriteLine("dry run, nothing written");
+            Console.WriteLine("Dry run, nothing written.");
             return 0;
         }
         try
         {
-            var backup = SaveWriter.Write(edited, path);
-            Console.WriteLine($"written. backup: {backup}");
+            var backup = SaveWriter.Write(edited, w.Path);
+            Console.WriteLine($"Written. Backup: {backup}");
             return 0;
         }
         catch (InvalidOperationException e)

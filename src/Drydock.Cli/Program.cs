@@ -1,4 +1,5 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System.Globalization;
+using System.Runtime.CompilerServices;
 using Drydock.Core;
 
 namespace Drydock.Cli;
@@ -9,25 +10,39 @@ static class Program
         usage: drydock [--game-dir <Game2 folder>] <command>
 
         commands:
-          items [query]                                  list item definitions, optionally filtered
-          inventories <save> [--owner <text>] [--all]    list inventories by number; --all includes empty ones
-          set <save> <#> <item> <amount> [--dry-run]     set an item's amount, 0 removes it
-          add <save> <#> <item> <amount> [--dry-run]     add an item, topping up an existing stack
-          remove <save> <#> <item> [--dry-run]           remove every stack of an item
+          saves                                            list saves, newest first
+          items [query]                                    list item definitions, optionally filtered
+          inventories <save> [<target>] [--all]            list your inventories, or show what a target holds
+          set <save> <target> <item> <amount> [--dry-run]  make the inventory hold exactly this amount, 0 removes it
+          add <save> <target> <item> <amount> [--dry-run]  add an item, topping up an existing stack
+          remove <save> <target> <item> [--dry-run]        remove every stack of an item
 
         debugging:
-          paths <file.vrb> <field>                       print the type path to every field with that name
-          show <file.vrb> <name> [count]                 print fields whose name contains <name>
-          bytes <save> <owner>                           hex dump of the item lists of matching inventories
+          paths <file.vrb> <field>                         print the type path to every field with that name
+          show <file.vrb> <name> [count]                   print fields whose name contains <name>
+          bytes <save> <owner>                             hex dump of the item lists of matching inventories
 
-        <save> is a save folder path or a folder name in SaveGames. <#> is the number from 'inventories'.
-        <item> is a name, localization key or GUID from 'items'. Close the game before writing.
+        <save>    number from 'saves', part of the save's name, or a folder path
+        <target>  player, player:consumables, player:datapads, "Aquila/Cargo Container", or #number from 'inventories'
+        <item>    name, localization key or GUID from 'items'
+        Close the game before writing.
         """;
 
     static int Main(string[] args)
     {
+        CultureInfo.DefaultThreadCurrentCulture = CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+        Console.OutputEncoding = System.Text.Encoding.UTF8;
         var argList = args.ToList();
         string? gameDir = TakeOption(argList, "--game-dir");
+
+        // checked before anything loads, the game and a save parse together make the PC crawl
+        bool writes = argList.FirstOrDefault() is "set" or "add" or "remove" && !argList.Contains("--dry-run");
+        if (writes && SaveWriter.GameRunning())
+        {
+            Console.Error.WriteLine("Space Engineers 2 is running. Quit it completely, then run this again, or add --dry-run.");
+            return 1;
+        }
+
         try
         {
             GameInstall.Initialize(gameDir);
@@ -47,16 +62,18 @@ static class Program
         bool dryRun = args.Remove("--dry-run");
         switch (args.FirstOrDefault())
         {
+            case "saves" when args.Count == 1:
+                Commands.Saves();
+                return 0;
             case "items" when args.Count <= 2:
                 Commands.Items(args.ElementAtOrDefault(1));
                 return 0;
             case "inventories":
             {
-                var owner = TakeOption(args, "--owner");
                 bool all = args.Remove("--all");
-                if (args.Count != 2)
+                if (args.Count is not (2 or 3))
                     break;
-                Commands.Inventories(args[1], owner, all);
+                Commands.Inventories(args[1], args.ElementAtOrDefault(2), all);
                 return 0;
             }
             case "set" when args.Count == 5:

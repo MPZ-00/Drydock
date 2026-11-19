@@ -4,8 +4,8 @@ Inventory editor for Space Engineers 2 saves. Works offline on the save files, t
 It reads saves with the game's own parser from `VRage.Library.dll` in your install, using the type layout each save stores about itself. Nothing from the game is copied into this repo or shipped with it.
 
 Right now it can:
-- list the items the game knows, with names from its localization
-- list every inventory in a save: characters, blocks, containers
+- list your saves and the items the game knows, with names from its localization
+- list the inventories of your character, ships and stations by name
 - set, add and remove items
 
 ## Requirements
@@ -14,17 +14,26 @@ Right now it can:
 
 ## Usage
 ```
-dotnet run --project src/Drydock.Cli -- inventories "<save>" --owner CompositeCharacter
-dotnet run --project src/Drydock.Cli -- items iron
-dotnet run --project src/Drydock.Cli -- add "<save>" 310 "Iron Ore" 500 --dry-run
-dotnet run --project src/Drydock.Cli -- set "<save>" 310 "Rifle Magazine" 99
+drydock saves
+drydock inventories 1
+drydock inventories 1 Aquila
+drydock items iron
+drydock add 1 player "Iron Ore" 500 --dry-run
+drydock set 1 player "Rifle Magazine" 99
+drydock add 1 "Aquila/Smelter:input" "Iron Ore" 1000
 ```
-`<save>` is a folder name in `%AppData%\SpaceEngineers2\AppData\SaveGames` or a full path. The number is the inventory's `#` from `inventories`. Your own character is `CompositeCharacterServer`.
+Run it with `dotnet run --project src/Drydock.Cli --` in place of `drydock`, or build it and run `drydock.exe`.
 
-Quit the game before writing. Every write backs up `savegame.vrb` to `%LocalAppData%\Drydock\backups` first.
+`<save>` is the number from `saves` (1 is the newest), a unique part of the save's name, or a folder path.
+
+The target is `player`, a ship or station name, or `name/block`, with an optional `:slot` such as `player:datapads` or `Smelter:input`. Consumables and datapads go to their own slot when you only say `player`. Blocks with the same name are told apart by the `#number` from `inventories`, but that number changes whenever the game saves. Renaming the block in game is the stable way.
+
+Tools, guns and power modules take one stack per unit, like the game keeps them. New ones copy their extra data (ammo, charge) from one already in the save.
+
+Writing refuses while the game runs. Every write backs up `savegame.vrb` to `%LocalAppData%\Drydock\backups` first.
 
 ## How edits work
-The parser gives every value its byte range in the decompressed save. An edit splices new bytes into those ranges, fixes the list count, recompresses and recomputes the checksums. The result is parsed again before anything is written. Stacks with extra data (guns with ammo, power modules with a fill ratio) are cloned from an existing stack of the same item when there is one.
+The parser gives every value its byte range in the decompressed save. An edit splices new bytes into those ranges, fixes the list count, recompresses and recomputes the checksums. The result is parsed again before anything is written.
 
 ## Tests
 ```
