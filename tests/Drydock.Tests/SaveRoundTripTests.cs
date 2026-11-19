@@ -64,4 +64,36 @@ public class SaveRoundTripTests
         Assert.Contains(items, s => s.Definition == newItem);
         Assert.Equal(Inventory.FindAll(archive).Count, Inventory.FindAll(rebuilt).Count);
     }
+
+    static readonly Lazy<GameContent> Content = new(() => GameContent.Load(GameInstall.RootDir));
+
+    [SaveFact]
+    public void Unstackable_items_get_one_stack_per_unit()
+    {
+        var archive = Save.Value;
+        var catalog = Content.Value.Items;
+        var module = catalog.Search("Power Module").Single();
+        Assert.False(module.Stackable);
+        var inventory = Inventory.FindAll(archive).First(i => i.Object.IsPlayer);
+        int before = inventory.Items.Count(s => s.Definition == module.Guid);
+
+        var editor = new SaveEditor(archive, catalog);
+        editor.SetTotal(inventory, module.Guid, before + 3);
+        var after = Inventory.FindAll(editor.Build()).First(i => i.Object.IsPlayer && i.Slot == inventory.Slot);
+
+        var modules = after.Items.Where(s => s.Definition == module.Guid).ToList();
+        Assert.Equal(before + 3, modules.Count);
+        Assert.All(modules, s => Assert.Equal(1m, (decimal)s.Amount.Value!));
+        Assert.Throws<ArgumentException>(() => editor.AddItem(inventory, module.Guid, 1.5m));
+        Assert.Throws<ArgumentException>(() => editor.AddItem(inventory, catalog.Search("Steel Plate").Single().Guid, 0.5m));
+    }
+
+    [SaveFact]
+    public void Player_and_named_grids_are_found()
+    {
+        var inventories = Inventory.FindAll(Save.Value);
+        Assert.Contains(inventories, i => i.Object.IsPlayer && Content.Value.SlotName(i.Slot) == "main");
+        Assert.NotNull(Inventory.PlayerOwnerId(inventories));
+        Assert.Contains(inventories, i => i.Object.Kind is ObjectKind.Ship or ObjectKind.Station && i.Block != null);
+    }
 }

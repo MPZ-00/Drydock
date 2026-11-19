@@ -5,8 +5,9 @@ namespace Drydock.Core;
 /// <summary>
 /// Edits inventories by splicing bytes into the main chunk at offsets taken from the parsed tree.
 /// Nothing outside the touched item lists moves except by the size change, and the result is re-parsed before it is returned.
+/// With a <see cref="ItemCatalog"/> it also knows which items stack and which come in whole units.
 /// </summary>
-public sealed class SaveEditor(SaveArchive archive)
+public sealed class SaveEditor(SaveArchive archive, ItemCatalog? catalog = null)
 {
     readonly record struct Splice(int Start, int End, byte[] Bytes);
 
@@ -30,31 +31,87 @@ public sealed class SaveEditor(SaveArchive archive)
     }
 
     /// <summary>
-    /// Add <paramref name="amount"/> of an item. Tops up an existing stack without metadata, otherwise appends a new stack.
-    /// A new stack copies the metadata of an existing stack of the same item in this save if there is one (gun ammo, fill ratio).
+    /// Add <paramref name="amount"/> of an item. Stackable items top up an existing stack or get a new one.
+    /// Tools, guns and power modules get one stack per unit like the game keeps them, copied from an existing stack of the
+    /// same item in this save when there is one so they keep its metadata (ammo, fill ratio).
     /// </summary>
     public void AddItem(Inventory inventory, Guid definition, decimal amount)
     {
+        CheckAmount(definition, amount);
+        var end = inventory.ItemsField.End;
+        if (UnitStacks(definition))
+        {
+            byte[] bytes;
+            if (Template(definition) is { } template)
+            {
+                bytes = Archive.MainChunk[template.Field.Start..template.Field.End];
+                ItemCodec.Amount(1).CopyTo(bytes, template.Amount.Start - template.Field.Start);
+            }
+            else
+                bytes = ItemCodec.Stack(definition, 1);
+            for (int i = 0; i < (int)amount; i++)
+                Add(end, end, bytes);
+            ChangeCount(inventory, (int)amount);
+            return;
+        }
         var existing = inventory.Items.FirstOrDefault(s => s.Definition == definition && !s.HasMetaData);
         if (existing != null)
         {
             SetAmount(existing, CurrentAmount(existing) + amount);
             return;
         }
-        var end = inventory.ItemsField.End;
-        Add(end, end, NewStack(definition, amount));
+        Add(end, end, ItemCodec.Stack(definition, amount));
         ChangeCount(inventory, +1);
     }
 
-    byte[] NewStack(Guid definition, decimal amount)
+    /// <summary>Make the inventory hold exactly <paramref name="amount"/> of an item, adding or removing stacks as needed.</summary>
+    public void SetTotal(Inventory inventory, Guid definition, decimal amount)
     {
-        var template = Inventory.FindAll(Archive).SelectMany(i => i.Items).FirstOrDefault(s => s.Definition == definition && s.HasMetaData);
-        if (template == null)
-            return ItemCodec.Stack(definition, amount);
-        var bytes = Archive.MainChunk[template.Field.Start..template.Field.End];
-        ItemCodec.Amount(amount).CopyTo(bytes, template.Amount.Start - template.Field.Start);
-        return bytes;
+        if (amount > 0)
+            CheckAmount(definition, amount);
+        var stacks = inventory.Items.Where(s => s.Definition == definition).ToList();
+        if (stacks.Count == 0 || UnitStacks(definition))
+        {
+            decimal current = stacks.Sum(CurrentAmount);
+            if (amount > current)
+                AddItem(inventory, definition, amount - current);
+            // drop whole stacks from the end, newest first, then trim the last one
+            for (int i = stacks.Count - 1; i >= 0 && current > amount; i--)
+            {
+                decimal have = CurrentAmount(stacks[i]);
+                if (current - have >= amount)
+                    Remove(inventory, stacks[i]);
+                else
+                    SetAmount(stacks[i], have - (current - amount));
+                current -= Math.Min(have, current - amount);
+            }
+            return;
+        }
+        if (amount == 0)
+            Remove(inventory, stacks[0]);
+        else
+            SetAmount(stacks[0], amount);
+        foreach (var extra in stacks.Skip(1))
+            Remove(inventory, extra);
     }
+
+    bool UnitStacks(Guid definition) => catalog?.Find(definition) is { Stackable: false } || Template(definition) != null;
+
+    void CheckAmount(Guid definition, decimal amount)
+    {
+        bool whole = amount == decimal.Truncate(amount);
+        if (UnitStacks(definition) && !(whole && amount <= 10_000))
+            throw new ArgumentException("this item comes one per stack, use a whole number up to 10000.");
+        if (catalog?.Find(definition) is { Divisible: false } && !whole)
+            throw new ArgumentException("only ore and ingots come in fractions, use a whole number.");
+    }
+
+    ItemStack? Template(Guid definition) =>
+        (_templates ??= Inventory.FindAll(Archive).SelectMany(i => i.Items).Where(s => s.HasMetaData)
+            .GroupBy(s => s.Definition).ToDictionary(g => g.Key, g => g.First()))
+        .GetValueOrDefault(definition);
+
+    Dictionary<Guid, ItemStack>? _templates;
 
     public decimal CurrentAmount(ItemStack stack) => ItemCodec.ReadAmount(Archive.MainChunk.AsSpan(stack.Amount.Start, 16));
 
