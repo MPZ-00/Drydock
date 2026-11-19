@@ -17,8 +17,13 @@ public sealed record WorldObject(ObjectKind Kind, string Name, int? OwnerId)
     public bool IsPlayer => Kind == ObjectKind.Character && Name == Inventory.PlayerCharacter;
 }
 
+/// <summary>A block's position on its grid in meters. Stays put as long as the block does.</summary>
+public readonly record struct BlockPosition(double X, double Y, double Z);
+
 /// <summary>An inventory component in a save. <see cref="Block"/> is the raw name of the block holding it, null on characters.</summary>
-public sealed record Inventory(WorldObject Object, string? Block, IReadOnlyList<string> Owners, Guid Slot, SerializedField Field)
+/// <param name="Composite">The composite definition of the entity holding the inventory, which says what each slot accepts.</param>
+public sealed record Inventory(
+    WorldObject Object, string? Block, BlockPosition? Position, Guid? Composite, IReadOnlyList<string> Owners, Guid Slot, SerializedField Field)
 {
     public const string PlayerCharacter = "CompositeCharacterServer";
 
@@ -54,6 +59,8 @@ public sealed record Inventory(WorldObject Object, string? Block, IReadOnlyList<
         public readonly List<string> Owners = [];
         public WorldObject? Object;
         public string? Block;
+        public BlockPosition? Position;
+        public Guid? Composite;
     }
 
     static void Visit(SerializedField field, Context ctx, SerializedField? parent, List<Inventory> result)
@@ -63,7 +70,7 @@ public sealed record Inventory(WorldObject Object, string? Block, IReadOnlyList<
         var type = field.TypeName();
         if (type.EndsWith(InventoryType, StringComparison.Ordinal) && parent?.Member("Key") is { } key && ctx.Object != null)
         {
-            result.Add(new Inventory(ctx.Object, ctx.Block, ctx.Owners.ToArray(), ParseGuid(key), field));
+            result.Add(new Inventory(ctx.Object, ctx.Block, ctx.Position, ctx.Composite, ctx.Owners.ToArray(), ParseGuid(key), field));
             return;
         }
         if (!type.EndsWith(EntityType, StringComparison.Ordinal))
@@ -73,16 +80,30 @@ public sealed record Inventory(WorldObject Object, string? Block, IReadOnlyList<
             return;
         }
 
-        var (previousObject, previousBlock) = (ctx.Object, ctx.Block);
+        var saved = (ctx.Object, ctx.Block, ctx.Position, ctx.Composite);
         ctx.Owners.Add(DebugName(field));
+        ctx.Composite = field.Member("Definition") is { } definition ? ParseGuid(definition) : null;
         if (ctx.Object == null)
             ctx.Object = DescribeObject(field);
         else
-            ctx.Block = BlockName(field);
+            (ctx.Block, ctx.Position) = (BlockName(field), ReadPosition(field));
         foreach (var member in field.Members)
             Visit(member, ctx, field, result);
         ctx.Owners.RemoveAt(ctx.Owners.Count - 1);
-        (ctx.Object, ctx.Block) = (previousObject, previousBlock);
+        (ctx.Object, ctx.Block, ctx.Position, ctx.Composite) = saved;
+    }
+
+    static BlockPosition? ReadPosition(SerializedField entity)
+    {
+        foreach (var component in Components(entity))
+        {
+            if (!component.TypeName().EndsWith(".ChildTransformComponentObjectBuilder", StringComparison.Ordinal))
+                continue;
+            var p = component.Member("TransformWithEulerHint")?.Member("Transform")?.Member("Position");
+            if (p?.Member("X")?.Value is IConvertible x && p.Member("Y")?.Value is IConvertible y && p.Member("Z")?.Value is IConvertible z)
+                return new BlockPosition(Convert.ToDouble(x), Convert.ToDouble(y), Convert.ToDouble(z));
+        }
+        return null;
     }
 
     static string DebugName(SerializedField entity)

@@ -89,7 +89,7 @@ public sealed class SaveEditor(SaveArchive archive, ItemCatalog? catalog = null)
         }
         if (amount == 0)
             Remove(inventory, stacks[0]);
-        else
+        else if (CurrentAmount(stacks[0]) != amount)
             SetAmount(stacks[0], amount);
         foreach (var extra in stacks.Skip(1))
             Remove(inventory, extra);

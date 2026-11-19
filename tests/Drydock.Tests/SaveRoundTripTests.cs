@@ -96,4 +96,19 @@ public class SaveRoundTripTests
         Assert.NotNull(Inventory.PlayerOwnerId(inventories));
         Assert.Contains(inventories, i => i.Object.Kind is ObjectKind.Ship or ObjectKind.Station && i.Block != null);
     }
+
+    [SaveFact]
+    public void Player_slots_accept_what_the_game_allows()
+    {
+        var content = Content.Value;
+        var player = Inventory.FindAll(Save.Value).Where(i => i.Object.IsPlayer).ToList();
+        var main = player.Single(i => content.SlotName(i.Slot) == "main");
+        var consumables = player.Single(i => content.SlotName(i.Slot) == "consumables");
+        var medikit = content.Items.Search("Medikit").Single();
+        var iron = content.Items.Search("Iron Ore").Single();
+
+        Assert.False(content.Rules(main.Composite, main.Slot)!.Accepts(medikit));
+        Assert.True(content.Rules(main.Composite, main.Slot)!.Accepts(iron));
+        Assert.True(content.Rules(consumables.Composite, consumables.Slot)!.Accepts(medikit));
+    }
 }
