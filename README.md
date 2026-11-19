@@ -5,14 +5,30 @@ It reads saves with the game's own parser from `VRage.Library.dll` in your insta
 
 Right now it can:
 - list your saves and the items the game knows, with names from its localization
-- list the inventories of your character, ships and stations by name
-- set, add and remove items
+- show the inventories of your character, ships and stations by name
+- set, add and remove items, including power cells and guns with a charge or ammo count you pick
+- back up the whole save before every write and put a backup back
+
+It comes as a Windows app and as a command line tool.
 
 ## Requirements
-- Windows, .NET 9 SDK
+- Windows
+- .NET 9 SDK, only for the command line tool or building from source
 - Space Engineers 2 installed. Steam libraries are found automatically, otherwise set `SE2_GAME_DIR` to the `Game2` folder
 
 ## Usage
+### App
+<!-- screenshot of the main window goes here -->
+
+Download `Drydock-<version>-win-x64.zip` from the releases, unzip it anywhere and run `Drydock.exe`. Nothing gets installed. To update, replace the folder.
+
+Pick a save at the top, the newest one loads on start. The tree on the left groups inventories by ship or station, block and slot, like the game does. Only your own grids and inventories with something in them show by default, `show all` shows the rest. Pick an inventory and change totals in place, remove single stacks, or add items. Changes stay pending, marked orange, until you click Save, and the weight and stack bars show where the inventory ends up.
+
+Power cells, modules and guns keep one row per stack, since each has its own charge or ammo. New ones start full like the game makes them, or as a copy of one you pick, empty, or at a value you type such as 50%.
+
+Settings live in `%LocalAppData%\Drydock\settings.json`. A `settings.json` next to `Drydock.exe` overrides it key by key, so a folder on a USB stick carries its own game path and theme. The theme follows Windows unless you set Light or Dark.
+
+### Command line
 ```
 drydock saves
 drydock inventories 1
@@ -36,15 +52,17 @@ Edits that push an inventory over its weight or stack limit are refused, `--forc
 
 What Drydock reads from the game's content is cached in `%LocalAppData%\Drydock\cache` and rebuilt after a game update.
 
-Writing refuses while the game runs. Every write backs up `savegame.vrb` to `%LocalAppData%\Drydock\backups` first.
+Writing refuses while the game runs. Every write backs up the save folder to `%LocalAppData%\Drydock\backups` first, all files at its top level (subfolders like the game's own autosaves are left out). The newest 20 per save are kept. The app's Backups window puts one back, and backs up the current state before it does.
 
 ## How edits work
 The parser gives every value its byte range in the decompressed save. An edit splices new bytes into those ranges, fixes the list count, recompresses and recomputes the checksums. The result is parsed again before anything is written.
 
-## Tests
+## Building
 ```
 dotnet test
+build/publish.ps1 -Version 0.2.0
 ```
+The script builds the portable zip into `artifacts/`.
 The save tests use the most recently written save and only read it. Set `DRYDOCK_TEST_SAVE` to a `savegame.vrb` to pick one.
 
 ## Disclaimer
