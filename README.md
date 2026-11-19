@@ -62,7 +62,7 @@ The parser gives every value its byte range in the decompressed save. An edit sp
 dotnet test
 build/publish.ps1 -Version 0.2.0
 ```
-The script builds the portable zip into `artifacts/`.
+The script builds the app and command line zips into `artifacts/`.
 The save tests use the most recently written save and only read it. Set `DRYDOCK_TEST_SAVE` to a `savegame.vrb` to pick one.
 
 ## Disclaimer
