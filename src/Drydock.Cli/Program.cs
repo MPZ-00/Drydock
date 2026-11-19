@@ -14,6 +14,7 @@ static class Program
           items [query]                                    list item definitions, optionally filtered
           inventories <save> [<target>] [--all]            list your inventories, or show what a target holds
           set <save> <target> <item> <amount> [--dry-run]  make the inventory hold exactly this amount, 0 removes it
+                                                           --force puts an item where the game would not accept it
           add <save> <target> <item> <amount> [--dry-run]  add an item, topping up an existing stack
           remove <save> <target> <item> [--dry-run]        remove every stack of an item
 
@@ -60,6 +61,7 @@ static class Program
     static int Run(List<string> args)
     {
         bool dryRun = args.Remove("--dry-run");
+        bool force = args.Remove("--force");
         switch (args.FirstOrDefault())
         {
             case "saves" when args.Count == 1:
@@ -77,11 +79,11 @@ static class Program
                 return 0;
             }
             case "set" when args.Count == 5:
-                return Commands.Edit(Commands.EditKind.Set, args[1], args[2], args[3], args[4], dryRun);
+                return Commands.Edit(Commands.EditKind.Set, args[1], args[2], args[3], args[4], dryRun, force);
             case "add" when args.Count == 5:
-                return Commands.Edit(Commands.EditKind.Add, args[1], args[2], args[3], args[4], dryRun);
+                return Commands.Edit(Commands.EditKind.Add, args[1], args[2], args[3], args[4], dryRun, force);
             case "remove" when args.Count == 4:
-                return Commands.Edit(Commands.EditKind.Remove, args[1], args[2], args[3], null, dryRun);
+                return Commands.Edit(Commands.EditKind.Remove, args[1], args[2], args[3], null, dryRun, force);
             case "bytes" when args.Count == 3:
                 Commands.Bytes(args[1], args[2]);
                 return 0;

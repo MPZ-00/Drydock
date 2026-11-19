@@ -26,7 +26,9 @@ Run it with `dotnet run --project src/Drydock.Cli --` in place of `drydock`, or 
 
 `<save>` is the number from `saves` (1 is the newest), a unique part of the save's name, or a folder path.
 
-The target is `player`, a ship or station name, or `name/block`, with an optional `:slot` such as `player:datapads` or `Smelter:input`. Consumables and datapads go to their own slot when you only say `player`. Blocks with the same name are told apart by the `#number` from `inventories`, but that number changes whenever the game saves. Renaming the block in game is the stable way.
+The target is `player`, a ship or station name, or `name/block`, with an optional `:slot` such as `player:datapads` or `Smelter:input`. Without a slot the item goes where the game accepts it, so a Medikit for `player` lands in consumables and ore for a smelter in its input. A slot that doesn't take the item is refused with the right one named, `--force` writes it anyway.
+
+Blocks sharing a name on one grid are numbered by their position, like `"Aquila/Cargo Container (2)"`. The numbers only shift when you build or remove a block of that name. The `#number` from `inventories` works too but changes whenever the game saves.
 
 Tools, guns and power modules take one stack per unit, like the game keeps them. New ones copy their extra data (ammo, charge) from one already in the save.
 

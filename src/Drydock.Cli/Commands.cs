@@ -51,7 +51,11 @@ static class Commands
         throw new FileNotFoundException($"No single save matches '{save}'. {hint}");
     }
 
-    sealed record World(string Path, SaveArchive Archive, GameContent Content, IReadOnlyList<Inventory> Inventories, int? PlayerOwner);
+    sealed record World(string Path, SaveArchive Archive, GameContent Content, IReadOnlyList<Inventory> Inventories, int? PlayerOwner)
+    {
+        /// <summary>Block names as shown and typed, numbered where one object has several blocks of the same name.</summary>
+        public Dictionary<Inventory, string> BlockLabels { get; } = Label(Content, Inventories);
+    }
 
     static World Load(string save)
     {
@@ -60,6 +64,23 @@ static class Commands
         var content = Status.Step("Reading game content", () => GameContent.Load(GameInstall.RootDir));
         var inventories = Inventory.FindAll(archive);
         return new World(path, archive, content, inventories, Inventory.PlayerOwnerId(inventories));
+    }
+
+    // numbered by position on the grid, so the numbers only shift when a block of that name is built or removed
+    static Dictionary<Inventory, string> Label(GameContent content, IReadOnlyList<Inventory> inventories)
+    {
+        var labels = new Dictionary<Inventory, string>(ReferenceEqualityComparer.Instance);
+        var objectIds = new Dictionary<WorldObject, int>(ReferenceEqualityComparer.Instance);
+        var withBlock = inventories.Where(i => i.Block != null);
+        foreach (var group in withBlock.GroupBy(i => (objectIds.TryAdd(i.Object, objectIds.Count) ? objectIds[i.Object] : objectIds[i.Object], content.Localize(i.Block!))))
+        {
+            var name = group.Key.Item2;
+            var blocks = group.Select(i => i.Position).Distinct()
+                .OrderBy(p => p?.X).ThenBy(p => p?.Y).ThenBy(p => p?.Z).ToList();
+            foreach (var inv in group)
+                labels[inv] = blocks.Count < 2 ? name : $"{name} ({blocks.IndexOf(inv.Position) + 1})";
+        }
+        return labels;
     }
 
     public static void Items(string? query)
@@ -78,7 +99,7 @@ static class Commands
     {
         var name = ObjectName(w, inv.Object);
         if (inv.Block != null)
-            name += "/" + w.Content.Localize(inv.Block);
+            name += "/" + w.BlockLabels[inv];
         var slot = w.Content.SlotName(inv.Slot);
         return slot == "main" ? name : $"{name}:{slot}";
     }
@@ -164,7 +185,7 @@ static class Commands
 
         var hits = Pick(all, n => ObjectName(w, w.Inventories[n].Object), objectPart);
         if (blockPart != null)
-            hits = Pick(hits, n => w.Inventories[n].Block is { } b ? w.Content.Localize(b) : "", blockPart);
+            hits = Pick(hits, n => w.BlockLabels.GetValueOrDefault(w.Inventories[n], ""), blockPart);
         if (slot != null)
             hits = hits.Where(n => w.Content.SlotName(w.Inventories[n].Slot).Equals(slot, StringComparison.OrdinalIgnoreCase)).ToList();
         return hits;
@@ -179,7 +200,7 @@ static class Commands
     public enum EditKind { Set, Add, Remove }
 
     /// <summary>One inventory edit from the command line. Amount 0 with set removes the item.</summary>
-    public static int Edit(EditKind kind, string save, string target, string itemQuery, string? amountText, bool dryRun)
+    public static int Edit(EditKind kind, string save, string target, string itemQuery, string? amountText, bool dryRun, bool force)
     {
         decimal amount = 0;
         if (kind != EditKind.Remove && !decimal.TryParse(amountText, NumberStyles.Number, CultureInfo.InvariantCulture, out amount))
@@ -198,10 +219,15 @@ static class Commands
         }
         var item = items[0];
 
+        bool? Accepts(int i) => w.Content.Rules(w.Inventories[i].Composite, w.Inventories[i].Slot)?.Accepts(item);
+
         var matches = Match(w, target);
-        // "player" or a block with input and output: pick the slot the item belongs in unless one is named
+        // "player" or a block with input and output: pick the slot that takes the item unless one is named
         if (matches.Count > 1 && !target.Contains(':'))
         {
+            var accepting = matches.Where(i => Accepts(i) == true).ToList();
+            if (accepting.Count > 0)
+                matches = accepting;
             var slot = item.Kind switch
             {
                 "Consumable" => "consumables",
@@ -210,8 +236,8 @@ static class Commands
                 "Schematic" => "schematics",
                 _ => "main",
             };
-            var preferred = matches.Where(n => w.Content.SlotName(w.Inventories[n].Slot) == slot).ToList();
-            if (preferred.Count > 0)
+            var preferred = matches.Where(i => w.Content.SlotName(w.Inventories[i].Slot) == slot).ToList();
+            if (preferred.Count > 0 && matches.Count > 1)
                 matches = preferred;
         }
         if (matches.Count != 1)
@@ -225,6 +251,16 @@ static class Commands
         }
         int n = matches[0];
         var inventory = w.Inventories[n];
+        if (kind != EditKind.Remove && amount > 0 && Accepts(n) == false && !force)
+        {
+            // the other slots of the same block, like a smelter's input when the output was named
+            var other = Enumerable.Range(0, w.Inventories.Count).FirstOrDefault(i => i != n && Accepts(i) == true
+                && ReferenceEquals(w.Inventories[i].Object, inventory.Object) && w.Inventories[i].Position == inventory.Position
+                && w.Inventories[i].Block == inventory.Block, -1);
+            return Fail($"{Ref(w, inventory)} doesn't take {item.Name}."
+                + (other >= 0 ? $" Use \"{Ref(w, w.Inventories[other])}\" instead." : "")
+                + " --force writes it anyway.");
+        }
 
         var editor = new SaveEditor(w.Archive, w.Content.Items);
         try
@@ -250,14 +286,14 @@ static class Commands
         }
         if (!editor.HasChanges)
         {
-            Console.WriteLine("Nothing to change.");
+            Console.WriteLine($"Nothing to change, {Ref(w, inventory)} already holds {amount} {item.Name}.");
             return 0;
         }
 
         var edited = Status.Step("Building the edited save", editor.Build);
         Console.WriteLine("After the edit:");
-        var after = Inventory.FindAll(edited);
-        PrintInventory(w with { Inventories = after }, n, after[n]);
+        var after = new World(w.Path, edited, w.Content, Inventory.FindAll(edited), w.PlayerOwner);
+        PrintInventory(after, n, after.Inventories[n]);
         if (dryRun)
         {
             Console.WriteLine("Dry run, nothing written.");
