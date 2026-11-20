@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 (2026-11-20)
+Polishes the app.
+
+- Rows show the item's picture from your game install where Drydock finds one (most ores, components and consumables), its name with the item key smaller underneath, amount and mass side by side, and a status of edited, removed or new
+- Right-click a row to copy its name, item key, id or the whole row, Ctrl+C copies the selected rows
+- App icon and a Help > About window with the version, links to the source, bug reports and license, the game version this release was tested with next to yours, and buttons to open the settings and backup folders
+- Saving or restoring while the game runs now explains why that is risky and asks once instead of refusing. Nothing remembers the answer. The command line tool still refuses, and now says why
+- Tested with game version 4.0.0.3169
+
 ## 0.2.0 (2026-11-20)
 Adds a Windows app next to the command line tool.
 
