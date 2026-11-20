@@ -163,7 +163,7 @@
                             <TextBlock Grid.Column="4" Text="State" Margin="12,0,0,0" />
                             <TextBlock Grid.Column="5" Text="Status" Margin="12,0,0,0" />
                         </Grid>
-                        <ListBox x:Name="RowList" Grid.Row="1" ItemsSource="{Binding Rows}" SelectionMode="Extended"
+                        <ListBox x:Name="RowList" Grid.Row="1" ItemsSource="{Binding Rows}" SelectionMode="Extended" ContextMenuOpening="OnRowMenuOpening"
                                  HorizontalContentAlignment="Stretch">
                             <ListBox.CommandBindings>
                                 <CommandBinding Command="ApplicationCommands.Copy" Executed="OnCopyRows" />
@@ -173,7 +173,7 @@
                                     <MenuItem Header="Copy name" Tag="name" Click="OnCopyField" />
                                     <MenuItem Header="Copy item key" Tag="key" Click="OnCopyField" />
                                     <MenuItem Header="Copy item id" Tag="id" Click="OnCopyField" />
-                                    <MenuItem Header="Copy row" Tag="row" Click="OnCopyField" InputGestureText="Ctrl+C" />
+                                    <MenuItem Header="Copy row" Tag="row" Click="OnCopyField" />
                                 </ContextMenu>
                             </ListBox.ContextMenu>
                             <ListBox.ItemContainerStyle>

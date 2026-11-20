@@ -90,5 +90,12 @@ public sealed record InventoryViewModel(
             overrides.Where(o => o.Inventory == loaded.Index).Select(o => o.Message).Distinct().ToList());
     }
 
+    /// <summary>The rows as copy text, in the order the pane shows them, not the order they were picked.</summary>
+    public string CopyRows(IEnumerable<RowViewModel> picked)
+    {
+        var set = picked.ToHashSet();
+        return string.Join(Environment.NewLine, Rows.Where(set.Contains).Select(r => r.CopyText));
+    }
+
     static string Kg(double mass) => mass.ToString("0.##", CultureInfo.InvariantCulture) + "kg";
 }

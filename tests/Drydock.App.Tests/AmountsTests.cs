@@ -114,6 +114,13 @@ public class InventoryViewModelTests
     }
 
     [Fact]
+    public void Copied_rows_keep_the_pane_order()
+    {
+        var vm = InventoryViewModel.Build(View(new RowView(Iron, "Iron", 10, 10, null, null), new RowView(Cell, "Power Cell", 1, 5, 0, "30%")), View(), [], [], Name);
+        Assert.Equal(vm.Rows[0].CopyText + Environment.NewLine + vm.Rows[1].CopyText, vm.CopyRows([vm.Rows[1], vm.Rows[0]]));
+    }
+
+    [Fact]
     public void Limits_turn_red_when_over()
     {
         var preview = View(new RowView(Iron, "Iron", 120, 120, null, null)) with { Mass = 120 };

@@ -186,7 +186,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public void ShowStatus(string message) => Status = message;
 
-    public void RefreshGameRunning() => GameRunning = SaveWriter.GameRunning();
+    public void RefreshGameRunning() => GameRunning = GameRunningCheck();
 
     public async Task LoadAsync(SaveInfo save)
     {
@@ -408,7 +408,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>The save the world and pending edits belong to, which can differ from the picker while switching.</summary>
     public SaveInfo? LoadedSave { get; private set; }
 
-    public bool CanSave => HasWorld && PendingCount > 0 && !GameRunning && !Busy;
+    // a running game doesn't disable Save, the save prompt explains it and asks once
+    public bool CanSave => HasWorld && PendingCount > 0 && !Busy;
 
     public string SaveLabel => PendingCount > 0 ? $"Save ({PendingCount})" : "Save";
 

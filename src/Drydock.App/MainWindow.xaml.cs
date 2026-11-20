@@ -163,15 +163,23 @@ public partial class MainWindow : Window
 
     void OnCopyRows(object sender, System.Windows.Input.ExecutedRoutedEventArgs e)
     {
-        var rows = RowList.SelectedItems.OfType<RowViewModel>().ToList();
-        if (rows.Count > 0)
-            CopyText(string.Join(Environment.NewLine, rows.Select(r => r.CopyText)));
+        if (_vm.Pane is { } pane)
+            CopyText(pane.CopyRows(RowList.SelectedItems.OfType<RowViewModel>()));
+    }
+
+    RowViewModel? _menuRow;
+
+    // the row under the mouse, a right-click inside a multi-selection doesn't change SelectedItem
+    void OnRowMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        _menuRow = (e.OriginalSource as FrameworkElement)?.DataContext as RowViewModel;
+        if (_menuRow == null)
+            e.Handled = true;
     }
 
     void OnCopyField(object sender, RoutedEventArgs e)
     {
-        // a right-click selects the row under the mouse first
-        if (sender is not MenuItem { Tag: string field } || RowList.SelectedItem is not RowViewModel row)
+        if (sender is not MenuItem { Tag: string field } || _menuRow is not { } row)
             return;
         CopyText(field switch
         {
