@@ -21,7 +21,13 @@ public sealed record RowViewModel(
 {
     public string Status => IsRemoved ? "removed" : IsNew ? "new" : IsChanged ? "edited" : "";
 
-    public string CopyText => string.Join("	", Name, Key, AmountText, MassText, State ?? "");
+    // added rows go away with Revert
+    public bool CanRemove => !IsRemoved && !IsNew;
+
+    /// <summary>Removes the whole row: the one stack for items with state, else the total down to zero.</summary>
+    public Edit Removal(int inventory) => Stack is { } stack ? new RemoveStack(inventory, stack) : new SetTotal(inventory, Item, 0);
+
+    public string CopyText => string.Join("\t", Name, Key, AmountText, MassText, State ?? "");
 }
 
 /// <summary>The right-hand pane: the selected inventory as it will be after the pending edits.</summary>

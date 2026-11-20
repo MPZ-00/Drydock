@@ -237,14 +237,11 @@
                                         <TextBlock Grid.Column="4" Text="{Binding State}" Margin="12,0,0,0" MinWidth="50" VerticalAlignment="Center" />
                                         <TextBlock Grid.Column="5" Text="{Binding Status}" Margin="12,0,0,0" MinWidth="60" VerticalAlignment="Center" FontStyle="Italic" />
                                         <StackPanel Grid.Column="6" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                                            <Button Content="Remove" Padding="8,1" Margin="0,0,4,0" Click="OnRemoveStack">
+                                            <Button Content="Remove" Padding="8,1" Margin="0,0,4,0" Click="OnRemove">
                                                 <Button.Style>
                                                     <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                                                         <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding Stack}" Value="{x:Null}">
-                                                                <Setter Property="Visibility" Value="Collapsed" />
-                                                            </DataTrigger>
-                                                            <DataTrigger Binding="{Binding IsRemoved}" Value="True">
+                                                            <DataTrigger Binding="{Binding CanRemove}" Value="False">
                                                                 <Setter Property="Visibility" Value="Collapsed" />
                                                             </DataTrigger>
                                                         </Style.Triggers>

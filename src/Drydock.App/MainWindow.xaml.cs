@@ -227,10 +227,10 @@ public partial class MainWindow : Window
         }
     }
 
-    async void OnRemoveStack(object sender, RoutedEventArgs e)
+    async void OnRemove(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { DataContext: RowViewModel { Stack: { } stack } } && _vm.Pane is { } pane)
-            await _vm.ApplyAsync(new RemoveStack(pane.Index, stack));
+        if (sender is FrameworkElement { DataContext: RowViewModel { CanRemove: true } row } && _vm.Pane is { } pane)
+            await _vm.ApplyAsync(row.Removal(pane.Index));
     }
 
     async void OnRevert(object sender, RoutedEventArgs e)

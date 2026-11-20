@@ -114,6 +114,18 @@ public class InventoryViewModelTests
     }
 
     [Fact]
+    public void Every_loaded_row_can_be_removed()
+    {
+        var loaded = View(new RowView(Iron, "Iron", 10, 10, null, null), new RowView(Cell, "Power Cell", 1, 5, 0, "30%"));
+        var edits = new Edit[] { new AddStacks(7, Cell, 1, new NewState()) };
+        var vm = InventoryViewModel.Build(loaded, loaded, edits, [], Name);
+
+        Assert.Equal([true, true, false], vm.Rows.Select(r => r.CanRemove));
+        Assert.Equal(new SetTotal(7, Iron, 0), vm.Rows[0].Removal(7));
+        Assert.Equal(new RemoveStack(7, 0), vm.Rows[1].Removal(7));
+    }
+
+    [Fact]
     public void Copied_rows_keep_the_pane_order()
     {
         var vm = InventoryViewModel.Build(View(new RowView(Iron, "Iron", 10, 10, null, null), new RowView(Cell, "Power Cell", 1, 5, 0, "30%")), View(), [], [], Name);
