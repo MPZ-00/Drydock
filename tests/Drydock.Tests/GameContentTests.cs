@@ -44,13 +44,13 @@ public sealed class ItemIconTests : IDisposable
     }
 
     [Fact]
-    public void Several_icons_and_none_named_for_the_item_is_no_icon()
+    public void Several_icons_and_none_named_for_the_item_takes_the_plainest()
     {
         var def = Def("Datapads");
         var icons = Directory.CreateDirectory(Path.Combine(_dir, "Datapads", "Icons")).FullName;
         File.WriteAllText(Path.Combine(icons, "Datapad_Encrypted_Icon_200.png"), "");
         File.WriteAllText(Path.Combine(icons, "Datapad_Icon_200.png"), "");
-        Assert.Null(ItemCatalog.FindIcon(def));
+        Assert.Equal(Path.Combine(icons, "Datapad_Icon_200.png"), ItemCatalog.FindIcon(def));
     }
 
     [Fact]
