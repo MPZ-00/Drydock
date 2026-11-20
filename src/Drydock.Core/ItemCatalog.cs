@@ -86,7 +86,23 @@ public sealed class ItemCatalog
     /// </summary>
     internal static string? FindIcon(string defFile, string? contentRoot = null)
     {
-        return OwnIcon(defFile) ?? (contentRoot == null ? null : TerminalIcon(defFile, contentRoot));
+        var item = Path.GetFileNameWithoutExtension(defFile);
+        var dir = Path.GetDirectoryName(defFile)!;
+        return OwnIcon(dir, item) ?? (contentRoot == null ? null : TerminalIcon(defFile, contentRoot) ?? GroupIcon(dir, item, contentRoot));
+    }
+
+    // Datapads/Manuals/Booklet items share the picture in Datapads/Icons; the walk stops at Items/<group>
+    static string? GroupIcon(string dir, string item, string contentRoot)
+    {
+        for (var up = Path.GetDirectoryName(dir); up != null; up = Path.GetDirectoryName(up))
+        {
+            var rel = Path.GetRelativePath(contentRoot, up);
+            if (rel.StartsWith("..", StringComparison.Ordinal) || rel.Split(Path.DirectorySeparatorChar).Length < 2)
+                return null;
+            if (OwnIcon(up, item) is { } icon)
+                return icon;
+        }
+        return null;
     }
 
     // the terminal keeps icons in a copy of the content layout: Components/Simple/SteelPlate -> Terminal/Components/Simple/SteelPlate.png
@@ -105,14 +121,12 @@ public sealed class ItemCatalog
     static string Plain(string name) =>
         new string(name.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant().Replace("icon", "");
 
-    static string? OwnIcon(string defFile)
+    static string? OwnIcon(string dir, string item)
     {
-        var dir = Path.GetDirectoryName(defFile)!;
         var subfolders = new[] { "Icon", "Icons" }.Select(f => Path.Combine(dir, f)).Where(Directory.Exists).ToList();
         var inSubfolders = subfolders.SelectMany(f => Directory.EnumerateFiles(f, "*.png")).ToList();
         var named = inSubfolders.Concat(Directory.EnumerateFiles(dir, "*.png"))
             .Where(f => Path.GetFileName(f).Contains("icon", StringComparison.OrdinalIgnoreCase)).ToList();
-        var item = Path.GetFileNameWithoutExtension(defFile);
         return named.FirstOrDefault(f => item.Contains(Path.GetFileNameWithoutExtension(f).Replace("_Icon", "", StringComparison.OrdinalIgnoreCase), StringComparison.OrdinalIgnoreCase))
             // none named for this item: the shortest name is the most general picture, a plain datapad over the encrypted one
             ?? named.OrderBy(f => Path.GetFileName(f).Length).FirstOrDefault()

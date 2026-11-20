@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Globalization;
 using Drydock.Core;
 
@@ -17,11 +18,17 @@ public sealed record StateInfo(decimal Max, bool WholeNumbers, bool Percent)
 public sealed record RowViewModel(
     Guid Item, string Name, string AmountText, string MassText, string? State,
     bool CanEditAmount, int? Stack, bool IsChanged, bool IsRemoved, Edit? Edit,
-    bool IsNew = false, string Key = "", string? Icon = null)
+    bool IsNew = false, string Key = "", string? Icon = null, int Inventory = 0, string? Slot = null)
 {
     public string Status => IsRemoved ? "removed" : IsNew ? "new" : IsChanged ? "edited" : "";
 
-    public string CopyText => string.Join("	", Name, Key, AmountText, MassText, State ?? "");
+    // added rows go away with Revert
+    public bool CanRemove => !IsRemoved && !IsNew;
+
+    /// <summary>Removes the whole row: the one stack for items with state, else the total down to zero.</summary>
+    public Edit Removal() => Stack is { } stack ? new RemoveStack(Inventory, stack) : new SetTotal(Inventory, Item, 0);
+
+    public string CopyText => string.Join("\t", Name, Key, AmountText, MassText, State ?? "");
 }
 
 /// <summary>The right-hand pane: the selected inventory as it will be after the pending edits.</summary>
@@ -73,22 +80,46 @@ public sealed record InventoryViewModel(
             rows.Add(new RowViewModel(add.Item, name(add.Item), add.Count.ToString(CultureInfo.InvariantCulture), "", state,
                 CanEditAmount: false, null, IsChanged: true, IsRemoved: false, add, IsNew: true));
         }
-        if (info != null)
-            rows = rows.Select(r => info(r.Item) is { } i ? r with { Key = i.Key, Icon = i.Icon } : r).ToList();
+        rows = rows.Select(r => info?.Invoke(r.Item) is { } i ? r with { Key = i.Key, Icon = i.Icon, Inventory = loaded.Index } : r with { Inventory = loaded.Index }).ToList();
 
         // the same list keeps WPF from rebuilding the rows, which would drop what the user is typing
         IReadOnlyList<RowViewModel> keptRows = previous?.Index == loaded.Index && previous.Rows.SequenceEqual(rows) ? previous.Rows : rows;
-        bool massOver = preview.MaxMass is { } maxMass && preview.Mass > maxMass;
-        bool stacksOver = preview.MaxStacks is { } maxStacks && preview.Stacks > maxStacks;
-        return new InventoryViewModel(
-            loaded.Index, loaded.Ref,
-            $"{preview.Mass:0.##}{(preview.MaxMass is { } m ? $"/{m:0.##}" : "")}kg",
-            preview.MaxMass is { } mm and > 0 ? Math.Min(1, preview.Mass / mm) : 0, massOver,
-            $"{preview.Stacks}{(preview.MaxStacks is { } s ? $"/{s}" : "")} stacks",
-            preview.MaxStacks is { } ms and > 0 ? Math.Min(1, (double)preview.Stacks / ms) : 0, stacksOver,
-            keptRows,
+        return Create(loaded.Index, loaded.Ref, preview.Mass, preview.MaxMass, preview.Stacks, preview.MaxStacks, keptRows,
             overrides.Where(o => o.Inventory == loaded.Index).Select(o => o.Message).Distinct().ToList());
     }
+
+    /// <summary>
+    /// One section for a block whose slots each hold a single stack, like a battery's cells:
+    /// the limits add up and each row names its slot.
+    /// </summary>
+    /// <param name="previews">The slots with the pending edits applied, in the same order as <paramref name="sections"/>.</param>
+    public static InventoryViewModel Merge(IReadOnlyList<InventoryViewModel> sections, IReadOnlyList<InventoryView> previews)
+    {
+        var first = sections[0];
+        int cut = first.Ref.LastIndexOf(':');
+        var rows = sections.Zip(previews, (s, p) => s.Rows.Select(r => r with { Slot = p.Slot })).SelectMany(r => r).ToList();
+        return Create(first.Index, cut > 0 ? first.Ref[..cut] : first.Ref,
+            previews.Sum(p => p.Mass), previews.All(p => p.MaxMass != null) ? previews.Sum(p => p.MaxMass!.Value) : null,
+            previews.Sum(p => p.Stacks), previews.All(p => p.MaxStacks != null) ? previews.Sum(p => p.MaxStacks!.Value) : null,
+            rows, sections.SelectMany(s => s.Overrides).Distinct().ToList())
+            // a new item goes to the first empty slot, a full block falls back to the first and the save prompt warns
+            with { AddTarget = previews.FirstOrDefault(p => p.Stacks == 0)?.Index ?? first.Index };
+    }
+
+    static InventoryViewModel Create(int index, string title, double mass, double? maxMass, int stacks, int? maxStacks,
+        IReadOnlyList<RowViewModel> rows, IReadOnlyList<string> overrides) =>
+        new(index, title,
+            $"{mass:0.##}{(maxMass is { } m ? $"/{m:0.##}" : "")}kg",
+            maxMass is { } mm and > 0 ? Math.Min(1, mass / mm) : 0, maxMass is { } over && mass > over,
+            $"{stacks}{(maxStacks is { } s ? $"/{s}" : "")} stacks",
+            maxStacks is { } ms and > 0 ? Math.Min(1, (double)stacks / ms) : 0, maxStacks is { } most && stacks > most,
+            rows, overrides) { AddTarget = index };
+
+    /// <summary>The inventory Add item puts new items into.</summary>
+    public int AddTarget { get; init; }
+
+    /// <summary>Tells the pane's list a heading from a row.</summary>
+    public bool IsSection => true;
 
     /// <summary>The rows as copy text, in the order the pane shows them, not the order they were picked.</summary>
     public string CopyRows(IEnumerable<RowViewModel> picked)
@@ -98,4 +129,29 @@ public sealed record InventoryViewModel(
     }
 
     static string Kg(double mass) => mass.ToString("0.##", CultureInfo.InvariantCulture) + "kg";
+}
+
+/// <summary>Lays the pane's sections out as one list: each section's heading, then its rows.</summary>
+public static class PaneItems
+{
+    /// <summary>A block whose slots each hold one stack shows as one section; a smelter's input and output stay apart.</summary>
+    public static bool Compact(IReadOnlyList<InventoryView> inventories) =>
+        inventories.Count > 1 && inventories.All(i => i.MaxStacks == 1);
+
+    public static IReadOnlyList<object> Layout(IReadOnlyList<InventoryViewModel> sections) =>
+        sections.SelectMany(s => s.Rows.Cast<object>().Prepend(s)).ToList();
+
+    /// <summary>Changes only the entries that differ, so an unchanged row keeps its text box and selection.</summary>
+    public static void Sync(ObservableCollection<object> items, IReadOnlyList<object> next)
+    {
+        for (int i = 0; i < next.Count; i++)
+        {
+            if (i >= items.Count)
+                items.Add(next[i]);
+            else if (!Equals(items[i], next[i]))
+                items[i] = next[i];
+        }
+        while (items.Count > next.Count)
+            items.RemoveAt(items.Count - 1);
+    }
 }

@@ -54,6 +54,24 @@ public sealed class ItemIconTests : IDisposable
     }
 
     [Fact]
+    public void Items_in_a_subfolder_use_the_groups_picture()
+    {
+        var def = Def(Path.Combine("Items", "Datapads", "Manuals", "Booklet"));
+        var icons = Directory.CreateDirectory(Path.Combine(_dir, "Items", "Datapads", "Icons")).FullName;
+        File.WriteAllText(Path.Combine(icons, "Datapad_Icon_200.png"), "");
+        Assert.Equal(Path.Combine(icons, "Datapad_Icon_200.png"), ItemCatalog.FindIcon(def, _dir));
+    }
+
+    [Fact]
+    public void The_search_stops_at_the_group_folder()
+    {
+        var def = Def(Path.Combine("Items", "Ores", "Iron"));
+        Directory.CreateDirectory(Path.Combine(_dir, "Items", "Icons"));
+        File.WriteAllText(Path.Combine(_dir, "Items", "Icons", "Generic_Icon.png"), "");
+        Assert.Null(ItemCatalog.FindIcon(def, _dir));
+    }
+
+    [Fact]
     public void A_picture_without_icon_in_its_name_is_not_an_icon()
     {
         var def = Def("Datapads");

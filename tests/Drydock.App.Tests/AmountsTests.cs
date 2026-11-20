@@ -114,10 +114,83 @@ public class InventoryViewModelTests
     }
 
     [Fact]
+    public void Every_loaded_row_can_be_removed()
+    {
+        var loaded = View(new RowView(Iron, "Iron", 10, 10, null, null), new RowView(Cell, "Power Cell", 1, 5, 0, "30%"));
+        var edits = new Edit[] { new AddStacks(7, Cell, 1, new NewState()) };
+        var vm = InventoryViewModel.Build(loaded, loaded, edits, [], Name);
+
+        Assert.Equal([true, true, false], vm.Rows.Select(r => r.CanRemove));
+        Assert.Equal(new SetTotal(7, Iron, 0), vm.Rows[0].Removal());
+        Assert.Equal(new RemoveStack(7, 0), vm.Rows[1].Removal());
+        Assert.All(vm.Rows, r => Assert.Equal(7, r.Inventory));
+    }
+
+    [Fact]
     public void Copied_rows_keep_the_pane_order()
     {
         var vm = InventoryViewModel.Build(View(new RowView(Iron, "Iron", 10, 10, null, null), new RowView(Cell, "Power Cell", 1, 5, 0, "30%")), View(), [], [], Name);
         Assert.Equal(vm.Rows[0].CopyText + Environment.NewLine + vm.Rows[1].CopyText, vm.CopyRows([vm.Rows[1], vm.Rows[0]]));
+    }
+
+    [Fact]
+    public void Sections_lay_out_as_a_heading_then_its_rows()
+    {
+        var input = InventoryViewModel.Build(View(new RowView(Iron, "Iron", 10, 10, null, null)), View(), [], [], Name);
+        var output = InventoryViewModel.Build(View(new RowView(Cell, "Power Cell", 1, 5, 0, "30%")) with { Index = 8 }, View(), [], [], Name);
+
+        Assert.Equal([input, input.Rows[0], output, output.Rows[0]], PaneItems.Layout([input, output]));
+    }
+
+    [Fact]
+    public void Refreshing_the_pane_keeps_rows_that_did_not_change()
+    {
+        var before = InventoryViewModel.Build(View(new RowView(Iron, "Iron", 10, 10, null, null)), View(), [], [], Name);
+        var items = new System.Collections.ObjectModel.ObservableCollection<object>(PaneItems.Layout([before]));
+        var row = items[1];
+        var after = before with { MassText = "99kg", Rows = [before.Rows[0] with { }] };
+
+        PaneItems.Sync(items, PaneItems.Layout([after]));
+
+        Assert.Same(after, items[0]);
+        Assert.Same(row, items[1]);
+    }
+
+    static InventoryView BatteryCell(int index, params RowView[] rows) =>
+        new(index, $"Mobile Station/Battery (1):cell{index}", "Battery (1)", $"cell{index}", rows.Length * 250, 250, rows.Length, 1, rows);
+
+    [Fact]
+    public void Single_stack_slots_merge_into_one_section()
+    {
+        var module = new RowView(Cell, "Power Module", 1, 250, 0, "100%");
+        var cells = new[] { BatteryCell(0, module), BatteryCell(1, module), BatteryCell(2) };
+        var sections = cells.Select(c => InventoryViewModel.Build(c, c, [], [], Name)).ToList();
+
+        var merged = InventoryViewModel.Merge(sections, cells);
+
+        Assert.Equal("Mobile Station/Battery (1)", merged.Ref);
+        Assert.Equal("500/750kg", merged.MassText);
+        Assert.Equal("2/3 stacks", merged.StacksText);
+        Assert.Equal(["cell0", "cell1"], merged.Rows.Select(r => r.Slot));
+        Assert.Equal([0, 1], merged.Rows.Select(r => r.Inventory));
+        Assert.Equal(2, merged.AddTarget);
+    }
+
+    [Fact]
+    public void A_full_block_adds_to_its_first_slot()
+    {
+        var module = new RowView(Cell, "Power Module", 1, 250, 0, "100%");
+        var cells = new[] { BatteryCell(4, module), BatteryCell(5, module) };
+        var merged = InventoryViewModel.Merge(cells.Select(c => InventoryViewModel.Build(c, c, [], [], Name)).ToList(), cells);
+        Assert.Equal(4, merged.AddTarget);
+    }
+
+    [Fact]
+    public void Only_blocks_of_single_stack_slots_merge()
+    {
+        Assert.True(PaneItems.Compact([BatteryCell(0), BatteryCell(1)]));
+        Assert.False(PaneItems.Compact([BatteryCell(0)]));
+        Assert.False(PaneItems.Compact([BatteryCell(0), View() with { Index = 9 }]));
     }
 
     [Fact]

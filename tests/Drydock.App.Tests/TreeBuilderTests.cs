@@ -52,6 +52,20 @@ public class TreeBuilderTests
     }
 
     [Fact]
+    public void A_block_holds_all_its_inventories_for_the_grouped_view()
+    {
+        var emptyInput = Inv("Refinery", "input", rows: 0);
+        var output = Inv("Refinery", "output");
+        var ship = new ObjectView("Grasshopper", ObjectKind.Ship, false, true, [emptyInput, output]);
+        var node = Node(TreeBuilder.Build([ship], false, "", new HashSet<int>()), "Grasshopper (ship)");
+
+        Assert.Empty(node.Inventories);
+        var refinery = Node(node.Children, "Refinery");
+        Assert.Equal([emptyInput, output], refinery.Inventories);
+        Assert.Equal([output], Assert.Single(refinery.Children).Inventories);
+    }
+
+    [Fact]
     public void Player_slots_sit_under_the_player_and_stay_when_empty()
     {
         var player = Node(TreeBuilder.Build(World, false, "", new HashSet<int>()), "Player");
