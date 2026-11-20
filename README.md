@@ -18,7 +18,9 @@ It comes as a Windows app and as a command line tool.
 
 ## Usage
 ### App
-<!-- screenshot of the main window goes here -->
+![A player's consumables with item pictures, amounts and Remove buttons](docs/images/main_player_consumables.png)
+
+![A smelter's input and output shown together](docs/images/main_vessel_smelter.png)
 
 Download `Drydock-<version>-win-x64.zip` from the releases, unzip it anywhere and run `Drydock.exe`. Nothing gets installed. To update, replace the folder.
 
