@@ -22,7 +22,7 @@ It comes as a Windows app and as a command line tool.
 
 Download `Drydock-<version>-win-x64.zip` from the releases, unzip it anywhere and run `Drydock.exe`. Nothing gets installed. To update, replace the folder.
 
-Pick a save at the top, the newest one loads on start. The tree on the left groups inventories by ship or station, block and slot, like the game does. Only your own grids and inventories with something in them show by default, `show all` shows the rest. Pick an inventory and change totals in place, remove single stacks, or add items. Changes stay pending, marked orange, until you click Save, and the weight and stack bars show where the inventory ends up.
+Pick a save at the top, the newest one loads on start. The tree on the left groups inventories by ship or station, block and slot, like the game does. Only your own grids and inventories with something in them show by default, `show all` shows the rest. Pick an inventory and change totals in place, remove items, or add new ones. Pick a block like a smelter to see all its inventories at once, and a battery's cells show as one list. Changes stay pending, marked orange, until you click Save, and the weight and stack bars show where the inventory ends up.
 
 Items show with their picture from your game install where Drydock can find one, which is most ores, components and consumables. Right-click a row to copy its name, item key or id, or Ctrl+C to copy the selected rows. The Add item list shows the pictures too.
 
