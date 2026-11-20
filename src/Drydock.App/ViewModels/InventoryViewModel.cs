@@ -13,9 +13,16 @@ public sealed record StateInfo(decimal Max, bool WholeNumbers, bool Percent)
 
 /// <param name="Edit">The pending edit behind this row, to revert it. Null for unchanged rows.</param>
 /// <param name="Stack">The loaded stack index for items with state, to remove that stack.</param>
+/// <param name="IsNew">The item isn't in the loaded inventory, the row comes from an edit.</param>
 public sealed record RowViewModel(
     Guid Item, string Name, string AmountText, string MassText, string? State,
-    bool CanEditAmount, int? Stack, bool IsChanged, bool IsRemoved, Edit? Edit);
+    bool CanEditAmount, int? Stack, bool IsChanged, bool IsRemoved, Edit? Edit,
+    bool IsNew = false, string Key = "", string? Icon = null)
+{
+    public string Status => IsRemoved ? "removed" : IsNew ? "new" : IsChanged ? "edited" : "";
+
+    public string CopyText => string.Join("	", Name, Key, AmountText, MassText, State ?? "");
+}
 
 /// <summary>The right-hand pane: the selected inventory as it will be after the pending edits.</summary>
 public sealed record InventoryViewModel(
@@ -27,7 +34,8 @@ public sealed record InventoryViewModel(
     /// <param name="preview">The same inventory with the pending edits applied, for totals and limits.</param>
     public static InventoryViewModel Build(
         InventoryView loaded, InventoryView preview, IReadOnlyList<Edit> edits, IReadOnlyList<Override> overrides,
-        Func<Guid, string> name, IReadOnlyDictionary<Guid, StateInfo>? states = null, InventoryViewModel? previous = null)
+        Func<Guid, string> name, IReadOnlyDictionary<Guid, StateInfo>? states = null, InventoryViewModel? previous = null,
+        Func<Guid, ItemInfo?>? info = null)
     {
         var mine = edits.Where(e => e.Inventory == loaded.Index).ToList();
         var rows = new List<RowViewModel>();
@@ -50,21 +58,23 @@ public sealed record InventoryViewModel(
         {
             var mass = preview.Rows.FirstOrDefault(r => r.Item == set.Item)?.Mass ?? 0;
             rows.Add(new RowViewModel(set.Item, name(set.Item), Amounts.Format(set.Amount), Kg(mass), null,
-                CanEditAmount: true, null, IsChanged: true, IsRemoved: false, set));
+                CanEditAmount: true, null, IsChanged: true, IsRemoved: false, set, IsNew: true));
         }
         foreach (var add in mine.OfType<AddStacks>())
         {
             var state = add.State switch
             {
-                NewState => "new",
+                NewState => "default",
                 CopyState => "copy",
-                ValueState v when states?.GetValueOrDefault(add.Item) is { } info => info.Describe(v.Value),
+                ValueState v when states?.GetValueOrDefault(add.Item) is { } described => described.Describe(v.Value),
                 ValueState v => v.Value.ToString(CultureInfo.InvariantCulture),
                 _ => null,
             };
             rows.Add(new RowViewModel(add.Item, name(add.Item), add.Count.ToString(CultureInfo.InvariantCulture), "", state,
-                CanEditAmount: false, null, IsChanged: true, IsRemoved: false, add));
+                CanEditAmount: false, null, IsChanged: true, IsRemoved: false, add, IsNew: true));
         }
+        if (info != null)
+            rows = rows.Select(r => info(r.Item) is { } i ? r with { Key = i.Key, Icon = i.Icon } : r).ToList();
 
         // the same list keeps WPF from rebuilding the rows, which would drop what the user is typing
         IReadOnlyList<RowViewModel> keptRows = previous?.Index == loaded.Index && previous.Rows.SequenceEqual(rows) ? previous.Rows : rows;

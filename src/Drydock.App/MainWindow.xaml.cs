@@ -161,6 +161,43 @@ public partial class MainWindow : Window
             OnAmountCommit(sender, e);
     }
 
+    void OnCopyRows(object sender, System.Windows.Input.ExecutedRoutedEventArgs e)
+    {
+        var rows = RowList.SelectedItems.OfType<RowViewModel>().ToList();
+        if (rows.Count > 0)
+            CopyText(string.Join(Environment.NewLine, rows.Select(r => r.CopyText)));
+    }
+
+    void OnCopyField(object sender, RoutedEventArgs e)
+    {
+        // a right-click selects the row under the mouse first
+        if (sender is not MenuItem { Tag: string field } || RowList.SelectedItem is not RowViewModel row)
+            return;
+        CopyText(field switch
+        {
+            "name" => row.Name,
+            "key" => row.Key,
+            "id" => row.Item.ToString(),
+            _ => row.CopyText,
+        });
+    }
+
+    // the clipboard can be held by another app for a moment
+    void CopyText(string text)
+    {
+        if (text.Length == 0)
+            return;
+        try
+        {
+            Clipboard.SetText(text);
+            _vm.ShowStatus("Copied");
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            _vm.ShowStatus("The clipboard is busy, try again");
+        }
+    }
+
     async void OnRemoveStack(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { DataContext: RowViewModel { Stack: { } stack } } && _vm.Pane is { } pane)

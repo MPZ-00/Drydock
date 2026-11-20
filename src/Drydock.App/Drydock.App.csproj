@@ -11,6 +11,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- WPF projects leave System.IO out of the implicit usings -->
+    <Using Include="System.IO" />
     <ProjectReference Include="..\Drydock.Core\Drydock.Core.csproj" />
   </ItemGroup>
 

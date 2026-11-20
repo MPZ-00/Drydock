@@ -184,6 +184,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public void ShowEditError(string message) => EditError = message;
 
+    public void ShowStatus(string message) => Status = message;
+
     public void RefreshGameRunning() => GameRunning = SaveWriter.GameRunning();
 
     public async Task LoadAsync(SaveInfo save)
@@ -226,6 +228,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 return (objects, Catalog: _content.Items.Items.OrderBy(i => i.Name).ToList(), stateful, states);
             });
             Catalog = loaded.Catalog;
+            _catalogByGuid = null;
             StatefulItems = loaded.stateful;
             States = loaded.states;
             SetEdits([], [], loaded.objects);
@@ -305,10 +308,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
         var preview = _previewObjects.SelectMany(o => o.Inventories).FirstOrDefault(i => i.Index == loaded.Index) ?? loaded;
-        Pane = InventoryViewModel.Build(loaded, preview, Edits, Overrides, ItemName, States, Pane);
+        Pane = InventoryViewModel.Build(loaded, preview, Edits, Overrides, ItemName, States, Pane, ItemOf);
     }
 
-    public string ItemName(Guid item) => Catalog.FirstOrDefault(i => i.Guid == item)?.Name ?? item.ToString();
+    public string ItemName(Guid item) => ItemOf(item)?.Name ?? item.ToString();
+
+    Dictionary<Guid, ItemInfo>? _catalogByGuid;
+
+    public ItemInfo? ItemOf(Guid item) =>
+        (_catalogByGuid ??= Catalog.ToDictionary(i => i.Guid)).GetValueOrDefault(item);
 
     /// <summary>The item's total in an inventory including pending edits.</summary>
     public decimal CurrentTotal(int inventory, Guid item) =>
