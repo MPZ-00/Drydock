@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2 (2026-11-21)
+- Remove works on every row, so consumables, datapads and other totals go away in one click
+- Clicking a block shows all its inventories at once, like a smelter's input and output, each with its own bars and Add item button
+- Blocks whose slots hold one stack each, like batteries, show as one list with the slot named on each row
+- Lines between rows and sections
+- Datapads stored in subfolders get the datapad picture too
+
 ## 0.3.1 (2026-11-21)
 - Start game button, launches Space Engineers 2 through Steam and offers to save pending changes first
 - The Add item list shows each item's picture and key
