@@ -24,7 +24,7 @@ public sealed partial class GameContent
         Dictionary<Guid, Guid> CompositeBases,
         Dictionary<Guid, int> AmmoCapacity);
 
-    const int SnapshotFormat = 2;
+    const int SnapshotFormat = 3;
 
     public static readonly string CacheDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Drydock", "cache");
@@ -128,7 +128,7 @@ public sealed partial class GameContent
             .ToDictionary(d => d.Guid, d => d.BaseGuid);
         return new Snapshot(
             stamp,
-            ItemCatalog.Build(definitions, files, texts).Items.ToList(),
+            ItemCatalog.Build(definitions, files, texts, content).Items.ToList(),
             slotKeys.ToDictionary(kv => kv.Key, kv => kv.Value.OrderBy(KeyRank).First()),
             compositeSlots,
             inventoryRules,
