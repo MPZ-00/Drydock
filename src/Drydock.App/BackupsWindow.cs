@@ -84,6 +84,8 @@ sealed class BackupsWindow : Window
             _warning.Text = "Pick a backup.";
             return;
         }
+        // checked now, the polled flag can be two seconds old
+        _main.RefreshGameRunning();
         bool allowRunningGame = _main.GameRunning;
         if (allowRunningGame && !MainWindow.ConfirmRunningGame(this, "Restore anyway?"))
             return;

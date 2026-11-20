@@ -13,7 +13,7 @@
 
   <ItemGroup>
     <Resource Include="Assets\Drydock.ico" />
-    <None Include="Assets\Drydock.png" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="Assets\Drydock.png" LogicalName="Drydock.png" />
     <!-- WPF projects leave System.IO out of the implicit usings -->
     <Using Include="System.IO" />
     <ProjectReference Include="..\Drydock.Core\Drydock.Core.csproj" />

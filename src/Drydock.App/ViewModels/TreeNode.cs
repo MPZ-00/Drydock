@@ -46,7 +46,8 @@ public static class TreeBuilder
                 var slots = block.Where(i => blockMatches || Matches(i.Slot)).ToList();
                 if (slots.Count == 0)
                     continue;
-                if (block.Count() == 1 && slots[0].Slot == "main")
+                // counted before empty ones are hidden, so a generator with an empty input keeps its slot names
+                if (o.Inventories.Count(i => i.Block == block.Key) == 1)
                     children.Add(Leaf(block.Key, slots[0], pending));
                 else
                     children.Add(Branch(block.Key, slots.Select(i => Leaf(i.Slot, i, pending)).ToList(),
