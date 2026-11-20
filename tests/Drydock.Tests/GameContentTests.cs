@@ -89,6 +89,44 @@ public sealed class ItemIconTests : IDisposable
         Assert.Equal(Path.Combine(terminal, "Electronic_Parts_Icon.png"), ItemCatalog.FindIcon(def, _dir));
     }
 
+    string Terminal(params string[] group) =>
+        Directory.CreateDirectory(Path.Combine([_dir, "MainMenuData", "UI", "Terminal", .. group])).FullName;
+
+    [Fact]
+    public void A_plural_folder_finds_its_singular_picture()
+    {
+        var def = Def(Path.Combine("Components", "Simple", "TurbineBlades"));
+        var terminal = Terminal("Components", "Simple");
+        File.WriteAllText(Path.Combine(terminal, "TurbineBlade_Icon.png"), "");
+        Assert.Equal(Path.Combine(terminal, "TurbineBlade_Icon.png"), ItemCatalog.FindIcon(def, _dir));
+    }
+
+    [Fact]
+    public void A_shortened_folder_finds_the_full_name()
+    {
+        var def = Def(Path.Combine("Components", "Simple", "ConstructionComp"));
+        var terminal = Terminal("Components", "Simple");
+        File.WriteAllText(Path.Combine(terminal, "ConstructionComponent.png"), "");
+        Assert.Equal(Path.Combine(terminal, "ConstructionComponent.png"), ItemCatalog.FindIcon(def, _dir));
+    }
+
+    [Fact]
+    public void Short_names_need_an_exact_match()
+    {
+        var def = Def(Path.Combine("Components", "Simple", "Wire"));
+        File.WriteAllText(Path.Combine(Terminal("Components", "Simple"), "WireHarness.png"), "");
+        Assert.Null(ItemCatalog.FindIcon(def, _dir));
+    }
+
+    [Fact]
+    public void A_picture_in_another_terminal_folder_is_found_by_its_exact_name()
+    {
+        var def = Def(Path.Combine("Items", "Ores", "StoneOre"));
+        var terminal = Terminal("Items");
+        File.WriteAllText(Path.Combine(terminal, "StoneOre.png"), "");
+        Assert.Equal(Path.Combine(terminal, "StoneOre.png"), ItemCatalog.FindIcon(def, _dir));
+    }
+
     [GameFact]
     public void Medikit_has_an_icon_from_the_install_and_some_items_have_none()
     {

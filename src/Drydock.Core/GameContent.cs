@@ -24,7 +24,7 @@ public sealed partial class GameContent
         Dictionary<Guid, Guid> CompositeBases,
         Dictionary<Guid, int> AmmoCapacity);
 
-    const int SnapshotFormat = 5;
+    const int SnapshotFormat = 6;
 
     public static readonly string CacheDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Drydock", "cache");

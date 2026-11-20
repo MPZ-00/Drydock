@@ -111,11 +111,33 @@ public sealed class ItemCatalog
         var itemDir = Path.GetRelativePath(contentRoot, Path.GetDirectoryName(defFile)!);
         if (itemDir.StartsWith("..", StringComparison.Ordinal) || Path.GetDirectoryName(itemDir) is not { Length: > 0 } group)
             return null;
-        var dir = Path.Combine(contentRoot, "MainMenuData", "UI", "Terminal", group);
-        if (!Directory.Exists(dir))
+        var terminal = Path.Combine(contentRoot, "MainMenuData", "UI", "Terminal");
+        if (!Directory.Exists(terminal))
             return null;
         var name = Plain(Path.GetFileName(itemDir));
-        return Directory.EnumerateFiles(dir, "*.png").FirstOrDefault(f => Plain(Path.GetFileNameWithoutExtension(f)) == name);
+        var dir = Path.Combine(terminal, group);
+        if (Directory.Exists(dir) && Closest(Directory.EnumerateFiles(dir, "*.png"), name, loose: true) is { } near)
+            return near;
+        // the terminal doesn't always mirror the content layout: Items/Ores/StoneOre -> Terminal/Items/StoneOre.png
+        return Closest(Directory.EnumerateFiles(terminal, "*.png", SearchOption.AllDirectories), name, loose: false);
+    }
+
+    /// <summary>
+    /// An exact name, then singular against plural (TurbineBlades, TurbineBlade_Icon), then with <paramref name="loose"/>
+    /// one name starting the other (ConstructionComp, ConstructionComponent). A guess has to be the only candidate.
+    /// </summary>
+    static string? Closest(IEnumerable<string> files, string name, bool loose)
+    {
+        var named = files.Select(f => (File: f, Name: Plain(Path.GetFileNameWithoutExtension(f)))).ToList();
+        if (named.FirstOrDefault(f => f.Name == name).File is { } exact)
+            return exact;
+        var singular = named.Where(f => f.Name.TrimEnd('s') == name.TrimEnd('s')).ToList();
+        if (singular.Count == 1)
+            return singular[0].File;
+        if (!loose || name.Length < 8)
+            return null;
+        var prefixed = named.Where(f => f.Name.Length >= 8 && (f.Name.StartsWith(name, StringComparison.Ordinal) || name.StartsWith(f.Name, StringComparison.Ordinal))).ToList();
+        return prefixed.Count == 1 ? prefixed[0].File : null;
     }
 
     static string Plain(string name) =>
