@@ -184,7 +184,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public void ShowEditError(string message) => EditError = message;
 
-    public void RefreshGameRunning() => GameRunning = SaveWriter.GameRunning();
+    public void ShowStatus(string message) => Status = message;
+
+    public void RefreshGameRunning() => GameRunning = GameRunningCheck();
 
     public async Task LoadAsync(SaveInfo save)
     {
@@ -226,6 +228,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 return (objects, Catalog: _content.Items.Items.OrderBy(i => i.Name).ToList(), stateful, states);
             });
             Catalog = loaded.Catalog;
+            _catalogByGuid = null;
             StatefulItems = loaded.stateful;
             States = loaded.states;
             SetEdits([], [], loaded.objects);
@@ -305,10 +308,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         }
         var preview = _previewObjects.SelectMany(o => o.Inventories).FirstOrDefault(i => i.Index == loaded.Index) ?? loaded;
-        Pane = InventoryViewModel.Build(loaded, preview, Edits, Overrides, ItemName, States, Pane);
+        Pane = InventoryViewModel.Build(loaded, preview, Edits, Overrides, ItemName, States, Pane, ItemOf);
     }
 
-    public string ItemName(Guid item) => Catalog.FirstOrDefault(i => i.Guid == item)?.Name ?? item.ToString();
+    public string ItemName(Guid item) => ItemOf(item)?.Name ?? item.ToString();
+
+    Dictionary<Guid, ItemInfo>? _catalogByGuid;
+
+    public ItemInfo? ItemOf(Guid item) =>
+        (_catalogByGuid ??= Catalog.ToDictionary(i => i.Guid)).GetValueOrDefault(item);
 
     /// <summary>The item's total in an inventory including pending edits.</summary>
     public decimal CurrentTotal(int inventory, Guid item) =>
@@ -400,7 +408,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>The save the world and pending edits belong to, which can differ from the picker while switching.</summary>
     public SaveInfo? LoadedSave { get; private set; }
 
-    public bool CanSave => HasWorld && PendingCount > 0 && !GameRunning && !Busy;
+    // a running game doesn't disable Save, the save prompt explains it and asks once
+    public bool CanSave => HasWorld && PendingCount > 0 && !Busy;
 
     public string SaveLabel => PendingCount > 0 ? $"Save ({PendingCount})" : "Save";
 
@@ -410,21 +419,21 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Raise(nameof(SaveLabel));
     }
 
-    public static SaveDecision Decide(bool gameRunning, bool changedOnDisk, int overrides, bool writeAnyway) =>
-        gameRunning ? new SaveDecision.Refuse("Space Engineers 2 is running. Quit it completely, then save.")
+    public static SaveDecision Decide(bool gameRunning, bool changedOnDisk, int overrides, bool writeAnyway, bool allowRunningGame) =>
+        gameRunning && !allowRunningGame ? new SaveDecision.GameRunning()
         : changedOnDisk ? new SaveDecision.Reload()
         : overrides > 0 && !writeAnyway ? new SaveDecision.Confirm()
         : new SaveDecision.Write();
 
     /// <summary>What saving would do now, with the rule-breaking edits freshly computed (a preview may still be pending).</summary>
-    public Task<(SaveDecision Decision, IReadOnlyList<Override> Overrides)> CheckSaveAsync(bool writeAnyway) => Worker.Run(() =>
+    public Task<(SaveDecision Decision, IReadOnlyList<Override> Overrides)> CheckSaveAsync(bool writeAnyway, bool allowRunningGame = false) => Worker.Run(() =>
     {
         var overrides = _plan!.Overrides(_plan.Preview());
-        return (Decide(GameRunningCheck(), _world!.ChangedOnDisk(), overrides.Count, writeAnyway), overrides);
+        return (Decide(GameRunningCheck(), _world!.ChangedOnDisk(), overrides.Count, writeAnyway, allowRunningGame), overrides);
     });
 
     /// <summary>Builds the edited save, checks it against the edits, writes it with a backup and reloads it.</summary>
-    public async Task<string> WriteAsync(bool writeAnyway)
+    public async Task<string> WriteAsync(bool writeAnyway, bool allowRunningGame = false)
     {
         if (_saving)
             throw new InvalidOperationException("Drydock is already saving.");
@@ -437,10 +446,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             {
                 // decided in the same job that writes, so nothing can change in between
                 var overrides = _plan!.Overrides(_plan.Preview());
-                switch (Decide(GameRunningCheck(), _world!.ChangedOnDisk(), overrides.Count, writeAnyway))
+                bool running = GameRunningCheck();
+                switch (Decide(running, _world!.ChangedOnDisk(), overrides.Count, writeAnyway, allowRunningGame))
                 {
-                    case SaveDecision.Refuse refuse:
-                        throw new InvalidOperationException(refuse.Message);
+                    case SaveDecision.GameRunning:
+                        throw new InvalidOperationException(SaveWriter.GameRunningReason);
                     case SaveDecision.Reload:
                         throw new InvalidOperationException("The game saved this world since Drydock read it. Nothing was written.");
                     case SaveDecision.Confirm:
@@ -449,7 +459,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 var built = _plan.Replay().Build();
                 if (_plan.Check(_world!.WithArchive(built)) is { } problem)
                     throw new InvalidOperationException($"Nothing was written. {problem}");
-                return SaveWriter.Write(built, _world.Path, Backups);
+                return SaveWriter.Write(built, _world.Path, Backups, allowRunningGame || !running);
             });
             await LoadAsync(LoadedSave!);
             Status = "Saved, backup made";
@@ -463,10 +473,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Puts a backup back and loads the save. Pending edits are dropped.</summary>
-    public async Task RestoreAsync(Backup backup, SaveInfo save)
+    public async Task RestoreAsync(Backup backup, SaveInfo save, bool allowRunningGame = false)
     {
         var saveDir = Path.GetDirectoryName(save.File)!;
-        await Worker.Run(() => Backups.Restore(backup, saveDir));
+        await Worker.Run(() => Backups.Restore(backup, saveDir, allowRunningGame));
         await LoadAsync(save);
     }
 
@@ -475,7 +485,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
 public abstract record SaveDecision
 {
-    public sealed record Refuse(string Message) : SaveDecision;
+    /// <summary>The game runs. Writing is only safe if it's at the main menu or has another world loaded, which the user must confirm.</summary>
+    public sealed record GameRunning : SaveDecision;
 
     /// <summary>The game saved over the file since it was loaded. Writing would lose that.</summary>
     public sealed record Reload : SaveDecision;

@@ -4,7 +4,8 @@ namespace Drydock.Core;
 
 /// <param name="Stackable">False for tools, guns and power modules, which the game keeps one per stack.</param>
 /// <param name="Divisible">True for ore and ingots, which come in fractions.</param>
-public sealed record ItemInfo(Guid Guid, string Key, string Name, string Kind, string Type, double MassPerUnit, double VolumePerUnit, bool Stackable, bool Divisible);
+/// <param name="Icon">A picture of the item in the game install, when one could be found.</param>
+public sealed record ItemInfo(Guid Guid, string Key, string Name, string Kind, string Type, double MassPerUnit, double VolumePerUnit, bool Stackable, bool Divisible, string? Icon = null);
 
 /// <summary>
 /// Item definitions from the game's content. definitionsets.vrb says which definitions exist, their runtime type and
@@ -48,7 +49,8 @@ public sealed class ItemCatalog
 
     /// <param name="files">The .def file of each definition GUID.</param>
     /// <param name="texts">Localized texts by key.</param>
-    internal static ItemCatalog Build(DefinitionIndex definitions, Dictionary<Guid, string> files, Dictionary<string, string> texts)
+    /// <param name="contentRoot">The game's Content folder, for the terminal's icons.</param>
+    internal static ItemCatalog Build(DefinitionIndex definitions, Dictionary<Guid, string> files, Dictionary<string, string> texts, string? contentRoot = null)
     {
         var resolved = new Dictionary<Guid, JsonObject?>();
 
@@ -72,9 +74,49 @@ public sealed class ItemCatalog
                 Number(value, "MassPerUnit"),
                 Number(value, "VolumePerUnit"),
                 (flags & Stackable) != 0,
-                (flags & Divisible) != 0);
+                (flags & Divisible) != 0,
+                files.TryGetValue(def.Guid, out var file) ? FindIcon(file, contentRoot) : null);
         }
         return new ItemCatalog(items);
+    }
+
+    /// <summary>
+    /// The released game has no map from an item's icon GUID to its file (that lives in the editor's meta files),
+    /// so this looks for a PNG named like an icon in or next to the item's definition folder.
+    /// </summary>
+    internal static string? FindIcon(string defFile, string? contentRoot = null)
+    {
+        return OwnIcon(defFile) ?? (contentRoot == null ? null : TerminalIcon(defFile, contentRoot));
+    }
+
+    // the terminal keeps icons in a copy of the content layout: Components/Simple/SteelPlate -> Terminal/Components/Simple/SteelPlate.png
+    static string? TerminalIcon(string defFile, string contentRoot)
+    {
+        var itemDir = Path.GetRelativePath(contentRoot, Path.GetDirectoryName(defFile)!);
+        if (itemDir.StartsWith("..", StringComparison.Ordinal) || Path.GetDirectoryName(itemDir) is not { Length: > 0 } group)
+            return null;
+        var dir = Path.Combine(contentRoot, "MainMenuData", "UI", "Terminal", group);
+        if (!Directory.Exists(dir))
+            return null;
+        var name = Plain(Path.GetFileName(itemDir));
+        return Directory.EnumerateFiles(dir, "*.png").FirstOrDefault(f => Plain(Path.GetFileNameWithoutExtension(f)) == name);
+    }
+
+    static string Plain(string name) =>
+        new string(name.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant().Replace("icon", "");
+
+    static string? OwnIcon(string defFile)
+    {
+        var dir = Path.GetDirectoryName(defFile)!;
+        var subfolders = new[] { "Icon", "Icons" }.Select(f => Path.Combine(dir, f)).Where(Directory.Exists).ToList();
+        var inSubfolders = subfolders.SelectMany(f => Directory.EnumerateFiles(f, "*.png")).ToList();
+        var named = inSubfolders.Concat(Directory.EnumerateFiles(dir, "*.png"))
+            .Where(f => Path.GetFileName(f).Contains("icon", StringComparison.OrdinalIgnoreCase)).ToList();
+        var item = Path.GetFileNameWithoutExtension(defFile);
+        return named.FirstOrDefault(f => item.Contains(Path.GetFileNameWithoutExtension(f).Replace("_Icon", "", StringComparison.OrdinalIgnoreCase), StringComparison.OrdinalIgnoreCase))
+            // several icons and none named for this item: guessing would give every datapad the encrypted one
+            ?? (named.Count == 1 ? named[0] : null)
+            ?? (inSubfolders.Count == 1 ? inSubfolders[0] : null);
     }
 
     // the game's ItemStackFlags

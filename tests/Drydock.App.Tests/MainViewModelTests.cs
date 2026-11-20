@@ -96,11 +96,33 @@ public sealed class MainViewModelTests : IDisposable
         return copy;
     }
 
-    MainViewModel WithStore() => new(new Settings(), Path.Combine(_dir, "user.json"), Path.Combine(_dir, "portable.json"), Path.Combine(_dir, "saves"))
+    MainViewModel WithStore(bool gameRunning = false) => new(new Settings(), Path.Combine(_dir, "user.json"), Path.Combine(_dir, "portable.json"), Path.Combine(_dir, "saves"))
     {
-        Backups = new BackupStore(Path.Combine(_dir, "backups"), () => false),
-        GameRunningCheck = () => false,
+        Backups = new BackupStore(Path.Combine(_dir, "backups"), () => gameRunning),
+        GameRunningCheck = () => gameRunning,
     };
+
+    [GameFact]
+    public async Task Save_stays_possible_while_the_game_runs_and_needs_the_one_time_ok()
+    {
+        if (CopySave() is not { } copy)
+            return;
+        using var vm = WithStore(gameRunning: true);
+        vm.RefreshSaves();
+        await vm.LoadAsync(vm.Saves.Single());
+        var main = vm.Objects[0].Inventories.First(i => i.Slot == "main");
+        var iron = vm.Catalog.First(i => i.Name == "Iron" && i.Type == "Ore");
+        await vm.ApplyAsync(new SetTotal(main.Index, iron.Guid, vm.CurrentTotal(main.Index, iron.Guid) + 7));
+        vm.RefreshGameRunning();
+
+        Assert.True(vm.GameRunning);
+        Assert.True(vm.CanSave);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vm.WriteAsync(writeAnyway: true));
+        var backup = await vm.WriteAsync(writeAnyway: true, allowRunningGame: true);
+
+        Assert.True(Directory.Exists(backup));
+        Assert.Equal(0, vm.PendingCount);
+    }
 
     [GameFact]
     public async Task A_save_the_game_wrote_meanwhile_is_never_overwritten()

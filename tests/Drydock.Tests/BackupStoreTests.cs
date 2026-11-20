@@ -110,6 +110,18 @@ public sealed class BackupStoreTests : IDisposable
     }
 
     [Fact]
+    public void Restore_while_the_game_runs_can_be_allowed()
+    {
+        var save = MakeSave();
+        var backup = Store().Create(save);
+        File.WriteAllText(Path.Combine(save, "savegame.vrb"), "save v2");
+
+        Store(gameRunning: true).Restore(backup, save, allowRunningGame: true);
+
+        Assert.Equal("save v1", File.ReadAllText(Path.Combine(save, "savegame.vrb")));
+    }
+
+    [Fact]
     public void A_locked_old_backup_does_not_fail_pruning()
     {
         var save = MakeSave();

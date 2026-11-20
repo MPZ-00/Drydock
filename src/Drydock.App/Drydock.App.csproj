@@ -5,12 +5,17 @@
     <TargetFramework>net9.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <AssemblyName>Drydock</AssemblyName>
+    <ApplicationIcon>Assets\Drydock.ico</ApplicationIcon>
     <RootNamespace>Drydock.App</RootNamespace>
     <!-- ThemeMode (the Fluent light/dark theme) is marked experimental in .NET 9 -->
     <NoWarn>$(NoWarn);WPF0001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
+    <Resource Include="Assets\Drydock.ico" />
+    <None Include="Assets\Drydock.png" CopyToOutputDirectory="PreserveNewest" />
+    <!-- WPF projects leave System.IO out of the implicit usings -->
+    <Using Include="System.IO" />
     <ProjectReference Include="..\Drydock.Core\Drydock.Core.csproj" />
   </ItemGroup>
 

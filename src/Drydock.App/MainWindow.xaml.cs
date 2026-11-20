@@ -79,15 +79,17 @@ public partial class MainWindow : Window
 
     async Task Save()
     {
-        bool writeAnyway = false;
+        bool writeAnyway = false, allowRunningGame = false;
         while (true)
         {
-            var (decision, overrides) = await _vm.CheckSaveAsync(writeAnyway);
+            var (decision, overrides) = await _vm.CheckSaveAsync(writeAnyway, allowRunningGame);
             switch (decision)
             {
-                case SaveDecision.Refuse refuse:
-                    MessageBox.Show(this, refuse.Message, "Drydock", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
+                case SaveDecision.GameRunning:
+                    if (!ConfirmRunningGame("Write anyway?"))
+                        return;
+                    allowRunningGame = true;
+                    continue;
                 case SaveDecision.Reload:
                     if (MessageBox.Show(this, "The game saved this world since Drydock read it. Writing now would undo that. Reload it? Pending changes are lost.",
                             "Drydock", MessageBoxButton.OKCancel, MessageBoxImage.Warning) == MessageBoxResult.OK)
@@ -103,7 +105,7 @@ public partial class MainWindow : Window
                 case SaveDecision.Write:
                     try
                     {
-                        var backup = await _vm.WriteAsync(writeAnyway);
+                        var backup = await _vm.WriteAsync(writeAnyway, allowRunningGame);
                         MessageBox.Show(this, $"Saved. The old version is backed up in\n{backup}", "Drydock", MessageBoxButton.OK, MessageBoxImage.Information);
                     }
                     catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException)
@@ -114,6 +116,13 @@ public partial class MainWindow : Window
             }
         }
     }
+
+    /// <summary>Asks once, for this write or restore only. True means the user says the world isn't loaded in the game.</summary>
+    internal static bool ConfirmRunningGame(Window owner, string question) =>
+        MessageBox.Show(owner, $"{SaveWriter.GameRunningReason}\n\nOnly go ahead if the game is at the main menu or has a different world loaded. {question}",
+            "Drydock", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
+
+    bool ConfirmRunningGame(string question) => ConfirmRunningGame(this, question);
 
     void OnBackups(object sender, RoutedEventArgs e) =>
         new BackupsWindow(_vm, _vm.SelectedSave!) { Owner = this }.ShowDialog();
@@ -150,6 +159,51 @@ public partial class MainWindow : Window
     {
         if (e.Key == System.Windows.Input.Key.Enter)
             OnAmountCommit(sender, e);
+    }
+
+    void OnCopyRows(object sender, System.Windows.Input.ExecutedRoutedEventArgs e)
+    {
+        if (_vm.Pane is { } pane)
+            CopyText(pane.CopyRows(RowList.SelectedItems.OfType<RowViewModel>()));
+    }
+
+    RowViewModel? _menuRow;
+
+    // the row under the mouse, a right-click inside a multi-selection doesn't change SelectedItem
+    void OnRowMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        _menuRow = (e.OriginalSource as FrameworkElement)?.DataContext as RowViewModel;
+        if (_menuRow == null)
+            e.Handled = true;
+    }
+
+    void OnCopyField(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { Tag: string field } || _menuRow is not { } row)
+            return;
+        CopyText(field switch
+        {
+            "name" => row.Name,
+            "key" => row.Key,
+            "id" => row.Item.ToString(),
+            _ => row.CopyText,
+        });
+    }
+
+    // the clipboard can be held by another app for a moment
+    void CopyText(string text)
+    {
+        if (text.Length == 0)
+            return;
+        try
+        {
+            Clipboard.SetText(text);
+            _vm.ShowStatus("Copied");
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            _vm.ShowStatus("The clipboard is busy, try again");
+        }
     }
 
     async void OnRemoveStack(object sender, RoutedEventArgs e)
@@ -190,6 +244,9 @@ public partial class MainWindow : Window
         else
             await _vm.ApplyAsync(new SetTotal(target, choice.Item.Guid, _vm.CurrentTotal(target, choice.Item.Guid) + choice.Amount));
     }
+
+    void OnAbout(object sender, RoutedEventArgs e) =>
+        new AboutWindow(Path.GetDirectoryName(Settings.UserPath)!, _vm.Backups.Root) { Owner = this, Icon = Icon }.ShowDialog();
 
     void OnTheme(object sender, RoutedEventArgs e)
     {

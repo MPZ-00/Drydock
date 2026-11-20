@@ -40,7 +40,7 @@ static class Program
         bool writes = argList.FirstOrDefault() is "set" or "add" or "remove" && !argList.Contains("--dry-run");
         if (writes && SaveWriter.GameRunning())
         {
-            Console.Error.WriteLine("Space Engineers 2 is running. Quit it completely, then run this again, or add --dry-run.");
+            Console.Error.WriteLine($"{SaveWriter.GameRunningReason} Quit it completely, then run this again, or add --dry-run.");
             return 1;
         }
 

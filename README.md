@@ -24,9 +24,13 @@ Download `Drydock-<version>-win-x64.zip` from the releases, unzip it anywhere an
 
 Pick a save at the top, the newest one loads on start. The tree on the left groups inventories by ship or station, block and slot, like the game does. Only your own grids and inventories with something in them show by default, `show all` shows the rest. Pick an inventory and change totals in place, remove single stacks, or add items. Changes stay pending, marked orange, until you click Save, and the weight and stack bars show where the inventory ends up.
 
-Power cells, modules and guns keep one row per stack, since each has its own charge or ammo. New ones start full like the game makes them, or as a copy of one you pick, empty, or at a value you type such as 50%.
+Items show with their picture from your game install where Drydock can find one, which is most ores, components and consumables. Right-click a row to copy its name, item key or id, or Ctrl+C to copy the selected rows.
 
-Settings live in `%LocalAppData%\Drydock\settings.json`. A `settings.json` next to `Drydock.exe` overrides it key by key, so a folder on a USB stick carries its own game path and theme. The theme follows Windows unless you set Light or Dark.
+Power cells, modules and guns keep one row per stack, since each has its own charge or ammo. New ones get what the game gives an item without saved data, or copy one you pick, start empty, or at a value you type such as 50%.
+
+Settings live in `%LocalAppData%\Drydock\settings.json`. A `settings.json` next to `Drydock.exe` overrides it key by key, so a folder on a USB stick carries its own game path and theme. The theme follows Windows unless you set Light or Dark. Help > About shows the game version this release was tested with next to yours, and opens the settings and backup folders.
+
+Saving while the game runs is risky: while the game has that world loaded, its next autosave or exit writes over the file and your changes are gone. Drydock asks first. Go ahead only if the game sits at the main menu or has a different world loaded.
 
 ### Command line
 ```
