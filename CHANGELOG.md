@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1 (2026-11-21)
+- Start game button, launches Space Engineers 2 through Steam and offers to save pending changes first
+- The Add item list shows each item's picture and key
+- Datapads show the plain datapad picture instead of none
+- A block with a single inventory, like a connector's ejector, opens straight to its contents
+- About works without its logo file next to the exe, and says so when Windows can't open a link or folder
+- Restore checks whether the game runs at the moment you click
+
 ## 0.3.0 (2026-11-20)
 Polishes the app.
 
