@@ -102,6 +102,16 @@ public sealed class MainViewModelTests : IDisposable
         GameRunningCheck = () => gameRunning,
     };
 
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void Start_game_is_off_while_it_runs(bool running, bool canStart)
+    {
+        using var vm = WithStore(gameRunning: running);
+        vm.RefreshGameRunning();
+        Assert.Equal(canStart, vm.CanStartGame);
+    }
+
     [GameFact]
     public async Task Save_stays_possible_while_the_game_runs_and_needs_the_one_time_ok()
     {
