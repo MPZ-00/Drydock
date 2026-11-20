@@ -155,7 +155,20 @@
                             </ListBox.ItemContainerStyle>
                             <ListBox.Resources>
                                 <DataTemplate DataType="{x:Type vm:InventoryViewModel}">
-                                    <Border BorderBrush="#70808080" BorderThickness="0,2,0,0" Margin="0,10,0,0">
+                                    <Border BorderBrush="#70808080">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="BorderThickness" Value="0,2,0,0" />
+                                                <Setter Property="Margin" Value="0,10,0,0" />
+                                                <Style.Triggers>
+                                                    <!-- no line above the first section, the column headings sit there -->
+                                                    <DataTrigger Binding="{Binding RelativeSource={RelativeSource PreviousData}}" Value="{x:Null}">
+                                                        <Setter Property="BorderThickness" Value="0" />
+                                                        <Setter Property="Margin" Value="0" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
                                     <StackPanel Margin="0,8,0,6">
                                         <DockPanel Margin="0,0,0,6">
                                             <Button DockPanel.Dock="Right" Content="Add item..." Padding="12,2" Click="OnAddItem" />
