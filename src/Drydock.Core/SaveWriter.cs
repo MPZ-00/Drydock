@@ -6,15 +6,20 @@ namespace Drydock.Core;
 public static class SaveWriter
 {
     // the running game overwrites the save on its next save and may hold its own copy in memory
+    public const string GameRunningReason =
+        "Space Engineers 2 is running. While it has this world loaded, its next autosave or exit writes its own copy over the file and your changes are gone. " +
+        "Writing is only safe when the game sits at the main menu or has a different world loaded, and Drydock can't tell which.";
+
     public static bool GameRunning() => Process.GetProcessesByName("SpaceEngineers2").Length > 0;
 
     /// <returns>The backup folder.</returns>
-    public static string Write(SaveArchive edited, string targetPath, BackupStore? store = null)
+    /// <param name="allowRunningGame">The user confirmed the game is at the main menu or has another world loaded.</param>
+    public static string Write(SaveArchive edited, string targetPath, BackupStore? store = null, bool allowRunningGame = false)
     {
         if (edited.IsPreview)
             throw new InvalidOperationException("A preview can't be written.");
-        if (GameRunning())
-            throw new InvalidOperationException("Space Engineers 2 is running. Quit it completely, then run this again.");
+        if (!allowRunningGame && GameRunning())
+            throw new InvalidOperationException(GameRunningReason);
         if (!edited.File.Verify(out var problem))
             throw new InvalidOperationException($"Refusing to write an archive that fails verification: {problem}");
 

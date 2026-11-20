@@ -84,11 +84,9 @@ sealed class BackupsWindow : Window
             _warning.Text = "Pick a backup.";
             return;
         }
-        if (_main.GameRunning)
-        {
-            MessageBox.Show(this, "Space Engineers 2 is running. Quit it completely, then restore.", "Drydock", MessageBoxButton.OK, MessageBoxImage.Warning);
+        bool allowRunningGame = _main.GameRunning;
+        if (allowRunningGame && !MainWindow.ConfirmRunningGame(this, "Restore anyway?"))
             return;
-        }
         var question = _main.PendingCount > 0
             ? $"Restore the backup from {item.TakenText}? Your {_main.PendingCount} pending changes are discarded."
             : $"Restore the backup from {item.TakenText}?";
@@ -99,7 +97,7 @@ sealed class BackupsWindow : Window
             return;
         try
         {
-            await _main.RestoreAsync(item.Backup, _save);
+            await _main.RestoreAsync(item.Backup, _save, allowRunningGame);
         }
         catch (Exception e) when (e is InvalidOperationException or IOException or UnauthorizedAccessException)
         {

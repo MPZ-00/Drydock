@@ -85,10 +85,10 @@ public sealed partial class BackupStore(string root, Func<bool>? gameRunning = n
     }
 
     /// <summary>Puts a backup's files back. The current state is backed up first and returned.</summary>
-    public Backup Restore(Backup backup, string saveDir)
+    public Backup Restore(Backup backup, string saveDir, bool allowRunningGame = false)
     {
-        if (_gameRunning())
-            throw new InvalidOperationException("Space Engineers 2 is running. Quit it completely, then restore.");
+        if (!allowRunningGame && _gameRunning())
+            throw new InvalidOperationException(SaveWriter.GameRunningReason);
         var safety = Create(saveDir);
         foreach (var file in backup.Files)
         {

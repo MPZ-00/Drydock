@@ -79,15 +79,17 @@ public partial class MainWindow : Window
 
     async Task Save()
     {
-        bool writeAnyway = false;
+        bool writeAnyway = false, allowRunningGame = false;
         while (true)
         {
-            var (decision, overrides) = await _vm.CheckSaveAsync(writeAnyway);
+            var (decision, overrides) = await _vm.CheckSaveAsync(writeAnyway, allowRunningGame);
             switch (decision)
             {
-                case SaveDecision.Refuse refuse:
-                    MessageBox.Show(this, refuse.Message, "Drydock", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
+                case SaveDecision.GameRunning:
+                    if (!ConfirmRunningGame("Write anyway?"))
+                        return;
+                    allowRunningGame = true;
+                    continue;
                 case SaveDecision.Reload:
                     if (MessageBox.Show(this, "The game saved this world since Drydock read it. Writing now would undo that. Reload it? Pending changes are lost.",
                             "Drydock", MessageBoxButton.OKCancel, MessageBoxImage.Warning) == MessageBoxResult.OK)
@@ -103,7 +105,7 @@ public partial class MainWindow : Window
                 case SaveDecision.Write:
                     try
                     {
-                        var backup = await _vm.WriteAsync(writeAnyway);
+                        var backup = await _vm.WriteAsync(writeAnyway, allowRunningGame);
                         MessageBox.Show(this, $"Saved. The old version is backed up in\n{backup}", "Drydock", MessageBoxButton.OK, MessageBoxImage.Information);
                     }
                     catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException)
@@ -114,6 +116,13 @@ public partial class MainWindow : Window
             }
         }
     }
+
+    /// <summary>Asks once, for this write or restore only. True means the user says the world isn't loaded in the game.</summary>
+    internal static bool ConfirmRunningGame(Window owner, string question) =>
+        MessageBox.Show(owner, $"{SaveWriter.GameRunningReason}\n\nOnly go ahead if the game is at the main menu or has a different world loaded. {question}",
+            "Drydock", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
+
+    bool ConfirmRunningGame(string question) => ConfirmRunningGame(this, question);
 
     void OnBackups(object sender, RoutedEventArgs e) =>
         new BackupsWindow(_vm, _vm.SelectedSave!) { Owner = this }.ShowDialog();
