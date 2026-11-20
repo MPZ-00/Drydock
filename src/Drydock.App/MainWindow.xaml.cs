@@ -157,13 +157,13 @@ public partial class MainWindow : Window
     // rebuilding the tree after an edit clears its selection, the pane keeps showing the last inventory
     void OnTreeSelection(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
-        if (e.NewValue is TreeNode { Inventory: { } inventory })
-            _vm.SelectedInventory = inventory;
+        if (e.NewValue is TreeNode { Inventories.Count: > 0 } node)
+            _vm.Select(node.Inventories);
     }
 
     async void OnAmountCommit(object sender, RoutedEventArgs e)
     {
-        if (sender is not TextBox { DataContext: RowViewModel row } box || _vm.Pane is not { } pane)
+        if (sender is not TextBox { DataContext: RowViewModel row } box)
             return;
         if (box.Text == row.AmountText)
             return;
@@ -173,7 +173,7 @@ public partial class MainWindow : Window
             box.Text = row.AmountText;
             return;
         }
-        await _vm.ApplyAsync(new SetTotal(pane.Index, row.Item, amount));
+        await _vm.ApplyAsync(new SetTotal(row.Inventory, row.Item, amount));
     }
 
     void OnAmountKey(object sender, System.Windows.Input.KeyEventArgs e)
@@ -184,8 +184,7 @@ public partial class MainWindow : Window
 
     void OnCopyRows(object sender, System.Windows.Input.ExecutedRoutedEventArgs e)
     {
-        if (_vm.Pane is { } pane)
-            CopyText(pane.CopyRows(RowList.SelectedItems.OfType<RowViewModel>()));
+        CopyText(_vm.CopyRows(RowList.SelectedItems.OfType<RowViewModel>()));
     }
 
     RowViewModel? _menuRow;
@@ -229,8 +228,8 @@ public partial class MainWindow : Window
 
     async void OnRemove(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { DataContext: RowViewModel { CanRemove: true } row } && _vm.Pane is { } pane)
-            await _vm.ApplyAsync(row.Removal(pane.Index));
+        if (sender is FrameworkElement { DataContext: RowViewModel { CanRemove: true } row })
+            await _vm.ApplyAsync(row.Removal());
     }
 
     async void OnRevert(object sender, RoutedEventArgs e)
@@ -241,7 +240,7 @@ public partial class MainWindow : Window
 
     async void OnAddItem(object sender, RoutedEventArgs e)
     {
-        if (_vm.Pane is not { } pane)
+        if (sender is not FrameworkElement { DataContext: InventoryViewModel pane })
             return;
         var dialog = new AddItemWindow(_vm) { Owner = this };
         if (dialog.ShowDialog() != true || dialog.Result is not { } choice)

@@ -121,8 +121,9 @@ public class InventoryViewModelTests
         var vm = InventoryViewModel.Build(loaded, loaded, edits, [], Name);
 
         Assert.Equal([true, true, false], vm.Rows.Select(r => r.CanRemove));
-        Assert.Equal(new SetTotal(7, Iron, 0), vm.Rows[0].Removal(7));
-        Assert.Equal(new RemoveStack(7, 0), vm.Rows[1].Removal(7));
+        Assert.Equal(new SetTotal(7, Iron, 0), vm.Rows[0].Removal());
+        Assert.Equal(new RemoveStack(7, 0), vm.Rows[1].Removal());
+        Assert.All(vm.Rows, r => Assert.Equal(7, r.Inventory));
     }
 
     [Fact]
@@ -130,6 +131,29 @@ public class InventoryViewModelTests
     {
         var vm = InventoryViewModel.Build(View(new RowView(Iron, "Iron", 10, 10, null, null), new RowView(Cell, "Power Cell", 1, 5, 0, "30%")), View(), [], [], Name);
         Assert.Equal(vm.Rows[0].CopyText + Environment.NewLine + vm.Rows[1].CopyText, vm.CopyRows([vm.Rows[1], vm.Rows[0]]));
+    }
+
+    [Fact]
+    public void Sections_lay_out_as_a_heading_then_its_rows()
+    {
+        var input = InventoryViewModel.Build(View(new RowView(Iron, "Iron", 10, 10, null, null)), View(), [], [], Name);
+        var output = InventoryViewModel.Build(View(new RowView(Cell, "Power Cell", 1, 5, 0, "30%")) with { Index = 8 }, View(), [], [], Name);
+
+        Assert.Equal([input, input.Rows[0], output, output.Rows[0]], PaneItems.Layout([input, output]));
+    }
+
+    [Fact]
+    public void Refreshing_the_pane_keeps_rows_that_did_not_change()
+    {
+        var before = InventoryViewModel.Build(View(new RowView(Iron, "Iron", 10, 10, null, null)), View(), [], [], Name);
+        var items = new System.Collections.ObjectModel.ObservableCollection<object>(PaneItems.Layout([before]));
+        var row = items[1];
+        var after = before with { MassText = "99kg", Rows = [before.Rows[0] with { }] };
+
+        PaneItems.Sync(items, PaneItems.Layout([after]));
+
+        Assert.Same(after, items[0]);
+        Assert.Same(row, items[1]);
     }
 
     [Fact]

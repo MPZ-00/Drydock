@@ -3,8 +3,12 @@ using Drydock.Core;
 namespace Drydock.App.ViewModels;
 
 /// <summary>One line of the inventory tree: an object, a block, or a slot. Leaves carry the inventory.</summary>
-public sealed class TreeNode(string label, IReadOnlyList<TreeNode> children, InventoryView? inventory, bool hasPending) : ObservableObject
+public sealed class TreeNode(string label, IReadOnlyList<TreeNode> children, InventoryView? inventory, bool hasPending,
+    IReadOnlyList<InventoryView>? inventories = null) : ObservableObject
 {
+    /// <summary>What the pane shows for this line: the leaf's inventory, all of a block's, or none for an object.</summary>
+    public IReadOnlyList<InventoryView> Inventories { get; } = inventories ?? (inventory is { } own ? [own] : []);
+
     public string Label { get; } = label;
     public IReadOnlyList<TreeNode> Children { get; } = children;
     public InventoryView? Inventory { get; } = inventory;
@@ -51,7 +55,8 @@ public static class TreeBuilder
                     children.Add(Leaf(block.Key, slots[0], pending));
                 else
                     children.Add(Branch(block.Key, slots.Select(i => Leaf(i.Slot, i, pending)).ToList(),
-                        filtering || expanded?.Contains($"{Label(o)}/{block.Key}") == true));
+                        filtering || expanded?.Contains($"{Label(o)}/{block.Key}") == true,
+                        o.Inventories.Where(i => i.Block == block.Key).ToList()));
             }
             if (children.Count > 0)
                 result.Add(Branch(Label(o), children, filtering || o.IsPlayer || expanded?.Contains(Label(o)) == true));
@@ -70,6 +75,6 @@ public static class TreeBuilder
     static TreeNode Leaf(string label, InventoryView inventory, ISet<int> pending) =>
         new(label, [], inventory, pending.Contains(inventory.Index));
 
-    static TreeNode Branch(string label, IReadOnlyList<TreeNode> children, bool expanded) =>
-        new(label, children, null, children.Any(c => c.HasPending)) { IsExpanded = expanded };
+    static TreeNode Branch(string label, IReadOnlyList<TreeNode> children, bool expanded, IReadOnlyList<InventoryView>? inventories = null) =>
+        new(label, children, null, children.Any(c => c.HasPending), inventories ?? []) { IsExpanded = expanded };
 }

@@ -72,13 +72,13 @@ public sealed class MainViewModelTests : IDisposable
             return; // no save on this machine
         await vm.LoadAsync(vm.Saves[0]);
         var main = vm.Objects[0].Inventories.First(i => i.Slot == "main");
-        vm.SelectedInventory = main;
+        vm.Select([main]);
         var iron = vm.Catalog.First(i => i.Name == "Iron" && i.Type == "Ore");
 
         await vm.ApplyAsync(new SetTotal(main.Index, iron.Guid, vm.CurrentTotal(main.Index, iron.Guid) + 7));
 
         Assert.Equal(1, vm.PendingCount);
-        var row = vm.Pane!.Rows.Single(r => r.Item == iron.Guid);
+        var row = Assert.Single(vm.Sections).Rows.Single(r => r.Item == iron.Guid);
         Assert.True(row.IsChanged);
         Assert.True(vm.Tree[0].HasPending);
         Assert.Null(vm.EditError);

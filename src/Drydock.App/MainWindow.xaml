@@ -85,65 +85,17 @@
             </TreeView>
             <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" Background="Transparent" />
             <Grid Grid.Column="2">
-                <DockPanel DataContext="{Binding Pane}" Margin="8,0,0,0">
+                <DockPanel Margin="8,0,0,0">
                     <DockPanel.Style>
                         <Style TargetType="DockPanel">
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                                <DataTrigger Binding="{Binding HasPane}" Value="False">
                                     <Setter Property="Visibility" Value="Collapsed" />
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
                     </DockPanel.Style>
-                    <StackPanel DockPanel.Dock="Top">
-                        <TextBlock Text="{Binding Ref}" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,6" />
-                        <Grid Margin="0,0,0,4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="120" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="{Binding MassText}" />
-                            <ProgressBar Grid.Column="1" Height="8" Maximum="1" Value="{Binding MassFraction, Mode=OneWay}">
-                                <ProgressBar.Style>
-                                    <Style TargetType="ProgressBar" BasedOn="{StaticResource {x:Type ProgressBar}}">
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding MassOver}" Value="True">
-                                                <Setter Property="Foreground" Value="Firebrick" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </ProgressBar.Style>
-                            </ProgressBar>
-                        </Grid>
-                        <Grid Margin="0,0,0,8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="120" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="{Binding StacksText}" />
-                            <ProgressBar Grid.Column="1" Height="8" Maximum="1" Value="{Binding StacksFraction, Mode=OneWay}">
-                                <ProgressBar.Style>
-                                    <Style TargetType="ProgressBar" BasedOn="{StaticResource {x:Type ProgressBar}}">
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding StacksOver}" Value="True">
-                                                <Setter Property="Foreground" Value="Firebrick" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </ProgressBar.Style>
-                            </ProgressBar>
-                        </Grid>
-                        <ItemsControl ItemsSource="{Binding Overrides}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding}" Foreground="Firebrick" TextWrapping="Wrap" />
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        <TextBlock Text="{Binding DataContext.EditError, RelativeSource={RelativeSource AncestorType=Window}}"
-                                   Foreground="Firebrick" TextWrapping="Wrap" />
-                    </StackPanel>
-                    <Button DockPanel.Dock="Bottom" Content="Add item..." HorizontalAlignment="Left" Padding="12,4" Margin="0,8,0,0" Click="OnAddItem" />
+                    <TextBlock DockPanel.Dock="Top" Text="{Binding EditError}" Foreground="Firebrick" TextWrapping="Wrap" />
                     <Grid Grid.IsSharedSizeScope="True">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -165,7 +117,7 @@
                             <TextBlock Grid.Column="4" Text="State" Margin="12,0,0,0" />
                             <TextBlock Grid.Column="5" Text="Status" Margin="12,0,0,0" />
                         </Grid>
-                        <ListBox x:Name="RowList" Grid.Row="1" ItemsSource="{Binding Rows}" SelectionMode="Extended" ContextMenuOpening="OnRowMenuOpening"
+                        <ListBox x:Name="RowList" Grid.Row="1" ItemsSource="{Binding PaneEntries}" SelectionMode="Extended" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ContextMenuOpening="OnRowMenuOpening"
                                  HorizontalContentAlignment="Stretch">
                             <ListBox.CommandBindings>
                                 <CommandBinding Command="ApplicationCommands.Copy" Executed="OnCopyRows" />
@@ -187,11 +139,73 @@
                                         <DataTrigger Binding="{Binding IsRemoved}" Value="True">
                                             <Setter Property="Opacity" Value="0.5" />
                                         </DataTrigger>
+                                        <!-- a section heading is part of the list but not a row to select -->
+                                        <DataTrigger Binding="{Binding IsSection}" Value="True">
+                                            <Setter Property="Focusable" Value="False" />
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="ListBoxItem">
+                                                        <ContentPresenter Margin="10,0,10,0" />
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </ListBox.ItemContainerStyle>
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
+                            <ListBox.Resources>
+                                <DataTemplate DataType="{x:Type vm:InventoryViewModel}">
+                                    <StackPanel Margin="0,10,0,6">
+                                        <DockPanel Margin="0,0,0,6">
+                                            <Button DockPanel.Dock="Right" Content="Add item..." Padding="12,2" Click="OnAddItem" />
+                                            <TextBlock Text="{Binding Ref}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                        <Grid Margin="0,0,0,4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="120" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding MassText}" />
+                                            <ProgressBar Grid.Column="1" Height="8" Maximum="1" Value="{Binding MassFraction, Mode=OneWay}">
+                                                <ProgressBar.Style>
+                                                    <Style TargetType="ProgressBar" BasedOn="{StaticResource {x:Type ProgressBar}}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding MassOver}" Value="True">
+                                                                <Setter Property="Foreground" Value="Firebrick" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ProgressBar.Style>
+                                            </ProgressBar>
+                                        </Grid>
+                                        <Grid Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="120" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding StacksText}" />
+                                            <ProgressBar Grid.Column="1" Height="8" Maximum="1" Value="{Binding StacksFraction, Mode=OneWay}">
+                                                <ProgressBar.Style>
+                                                    <Style TargetType="ProgressBar" BasedOn="{StaticResource {x:Type ProgressBar}}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding StacksOver}" Value="True">
+                                                                <Setter Property="Foreground" Value="Firebrick" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ProgressBar.Style>
+                                            </ProgressBar>
+                                        </Grid>
+                                        <ItemsControl ItemsSource="{Binding Overrides}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding}" Foreground="Firebrick" TextWrapping="Wrap" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                                <DataTemplate DataType="{x:Type vm:RowViewModel}">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="40" />
@@ -262,7 +276,7 @@
                                         </StackPanel>
                                     </Grid>
                                 </DataTemplate>
-                            </ListBox.ItemTemplate>
+                            </ListBox.Resources>
                         </ListBox>
                     </Grid>
                 </DockPanel>

@@ -84,15 +84,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     internal void RebuildTree() =>
         Tree = TreeBuilder.Build(Objects, ShowAll, Filter, PendingInventories, TreeBuilder.ExpandedKeys(Tree));
 
-    InventoryView? _selectedInventory;
-    public InventoryView? SelectedInventory
+    IReadOnlyList<InventoryView> _selected = [];
+
+    /// <summary>Shows these inventories in the pane: one slot, or every inventory of a block.</summary>
+    public void Select(IReadOnlyList<InventoryView> inventories)
     {
-        get => _selectedInventory;
-        set
-        {
-            if (Set(ref _selectedInventory, value))
-                RefreshPane();
-        }
+        _selected = inventories;
+        RefreshPane();
     }
 
     bool _hasWorld;
@@ -197,7 +195,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         try
         {
             Status = "Reading save";
-            SelectedInventory = null;
+            Select([]);
             var (file, archive) = await Worker.Run(() =>
             {
                 _world = null;
@@ -276,11 +274,29 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     IReadOnlyList<ObjectView> _previewObjects = [];
 
-    InventoryViewModel? _pane;
-    public InventoryViewModel? Pane
+    IReadOnlyList<InventoryViewModel> _sections = [];
+
+    /// <summary>The selected inventories as they will be after the pending edits, one section each.</summary>
+    public IReadOnlyList<InventoryViewModel> Sections
     {
-        get => _pane;
-        private set => Set(ref _pane, value);
+        get => _sections;
+        private set
+        {
+            if (Set(ref _sections, value))
+                Raise(nameof(HasPane));
+        }
+    }
+
+    public bool HasPane => Sections.Count > 0;
+
+    /// <summary>Section headings and rows in one list, for the pane's single list box.</summary>
+    public ObservableCollection<object> PaneEntries { get; } = [];
+
+    /// <summary>The picked rows as copy text, in the order the pane shows them.</summary>
+    public string CopyRows(IEnumerable<RowViewModel> picked)
+    {
+        var set = picked.ToList();
+        return string.Join(Environment.NewLine, Sections.Select(s => s.CopyRows(set)).Where(t => t.Length > 0));
     }
 
     string? _editError;
@@ -303,13 +319,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     void RefreshPane()
     {
-        if (SelectedInventory is not { } loaded)
+        var previous = Sections;
+        Sections = _selected.Select(loaded =>
         {
-            Pane = null;
-            return;
-        }
-        var preview = _previewObjects.SelectMany(o => o.Inventories).FirstOrDefault(i => i.Index == loaded.Index) ?? loaded;
-        Pane = InventoryViewModel.Build(loaded, preview, Edits, Overrides, ItemName, States, Pane, ItemOf);
+            var preview = _previewObjects.SelectMany(o => o.Inventories).FirstOrDefault(i => i.Index == loaded.Index) ?? loaded;
+            return InventoryViewModel.Build(loaded, preview, Edits, Overrides, ItemName, States, previous.FirstOrDefault(p => p.Index == loaded.Index), ItemOf);
+        }).ToList();
+        PaneItems.Sync(PaneEntries, PaneItems.Layout(Sections));
     }
 
     public string ItemName(Guid item) => ItemOf(item)?.Name ?? item.ToString();
