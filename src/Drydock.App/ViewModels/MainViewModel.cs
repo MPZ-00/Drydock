@@ -320,11 +320,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     void RefreshPane()
     {
         var previous = Sections;
-        Sections = _selected.Select(loaded =>
-        {
-            var preview = _previewObjects.SelectMany(o => o.Inventories).FirstOrDefault(i => i.Index == loaded.Index) ?? loaded;
-            return InventoryViewModel.Build(loaded, preview, Edits, Overrides, ItemName, States, previous.FirstOrDefault(p => p.Index == loaded.Index), ItemOf);
-        }).ToList();
+        var previews = _selected.Select(loaded => _previewObjects.SelectMany(o => o.Inventories).FirstOrDefault(i => i.Index == loaded.Index) ?? loaded).ToList();
+        var sections = _selected.Zip(previews, (loaded, preview) =>
+            InventoryViewModel.Build(loaded, preview, Edits, Overrides, ItemName, States, previous.FirstOrDefault(p => p.Index == loaded.Index), ItemOf)).ToList();
+        Sections = PaneItems.Compact(_selected) ? [InventoryViewModel.Merge(sections, previews)] : sections;
         PaneItems.Sync(PaneEntries, PaneItems.Layout(Sections));
     }
 

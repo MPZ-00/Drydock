@@ -156,6 +156,43 @@ public class InventoryViewModelTests
         Assert.Same(row, items[1]);
     }
 
+    static InventoryView BatteryCell(int index, params RowView[] rows) =>
+        new(index, $"Mobile Station/Battery (1):cell{index}", "Battery (1)", $"cell{index}", rows.Length * 250, 250, rows.Length, 1, rows);
+
+    [Fact]
+    public void Single_stack_slots_merge_into_one_section()
+    {
+        var module = new RowView(Cell, "Power Module", 1, 250, 0, "100%");
+        var cells = new[] { BatteryCell(0, module), BatteryCell(1, module), BatteryCell(2) };
+        var sections = cells.Select(c => InventoryViewModel.Build(c, c, [], [], Name)).ToList();
+
+        var merged = InventoryViewModel.Merge(sections, cells);
+
+        Assert.Equal("Mobile Station/Battery (1)", merged.Ref);
+        Assert.Equal("500/750kg", merged.MassText);
+        Assert.Equal("2/3 stacks", merged.StacksText);
+        Assert.Equal(["cell0", "cell1"], merged.Rows.Select(r => r.Slot));
+        Assert.Equal([0, 1], merged.Rows.Select(r => r.Inventory));
+        Assert.Equal(2, merged.AddTarget);
+    }
+
+    [Fact]
+    public void A_full_block_adds_to_its_first_slot()
+    {
+        var module = new RowView(Cell, "Power Module", 1, 250, 0, "100%");
+        var cells = new[] { BatteryCell(4, module), BatteryCell(5, module) };
+        var merged = InventoryViewModel.Merge(cells.Select(c => InventoryViewModel.Build(c, c, [], [], Name)).ToList(), cells);
+        Assert.Equal(4, merged.AddTarget);
+    }
+
+    [Fact]
+    public void Only_blocks_of_single_stack_slots_merge()
+    {
+        Assert.True(PaneItems.Compact([BatteryCell(0), BatteryCell(1)]));
+        Assert.False(PaneItems.Compact([BatteryCell(0)]));
+        Assert.False(PaneItems.Compact([BatteryCell(0), View() with { Index = 9 }]));
+    }
+
     [Fact]
     public void Limits_turn_red_when_over()
     {

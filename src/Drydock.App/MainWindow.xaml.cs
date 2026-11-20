@@ -245,7 +245,7 @@ public partial class MainWindow : Window
         var dialog = new AddItemWindow(_vm) { Owner = this };
         if (dialog.ShowDialog() != true || dialog.Result is not { } choice)
             return;
-        int target = pane.Index;
+        int target = pane.AddTarget;
         var (accepts, other, message) = await _vm.CheckSlotAsync(target, choice.Item.Guid);
         if (accepts == false)
         {
