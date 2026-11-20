@@ -25,7 +25,7 @@ sealed class AboutWindow : Window
             Margin = new Thickness(0, 0, 0, 12),
             Children =
             {
-                new Image { Source = IconCache.Decode(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Assets", "Drydock.png"))), Width = 56, Height = 56, Margin = new Thickness(0, 0, 14, 0) },
+                new Image { Source = AboutInfo.Logo(), Width = 56, Height = 56, Margin = new Thickness(0, 0, 14, 0) },
                 new StackPanel
                 {
                     VerticalAlignment = VerticalAlignment.Center,
@@ -70,18 +70,35 @@ sealed class AboutWindow : Window
         return block;
     }
 
-    static TextBlock Link(string text, string url)
+    TextBlock Link(string text, string url)
     {
         var link = new Hyperlink(new Run(text)) { NavigateUri = new Uri(url) };
-        link.RequestNavigate += (_, e) => Open(e.Uri.AbsoluteUri);
+        link.RequestNavigate += (_, e) => Open(this, e.Uri.AbsoluteUri);
         return new TextBlock(link) { Margin = new Thickness(0, 0, 0, 6) };
     }
 
-    static void OpenFolder(string folder)
+    void OpenFolder(string folder)
     {
         Directory.CreateDirectory(folder);
-        Open(folder);
+        Open(this, folder);
     }
 
-    static void Open(string target) => Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+    /// <summary>Opens a link, folder or steam:// address with whatever Windows has set up for it.</summary>
+    internal static bool Open(Window? owner, string target)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+            return true;
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            var text = "Windows couldn't open this:" + Environment.NewLine + target;
+            if (owner != null)
+                MessageBox.Show(owner, text, "Drydock", MessageBoxButton.OK, MessageBoxImage.Warning);
+            else
+                MessageBox.Show(text, "Drydock", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+    }
 }

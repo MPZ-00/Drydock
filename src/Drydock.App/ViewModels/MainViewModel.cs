@@ -140,6 +140,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (!Set(ref _gameRunning, value))
                 return;
             Raise(nameof(GameState));
+            Raise(nameof(CanStartGame));
             RaiseSave();
         }
     }
@@ -402,6 +403,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>Backups belong to the picked save, so a save that fails to load can still be restored.</summary>
     public bool CanOpenBackups => SelectedSave != null;
+
+    public bool CanStartGame => !GameRunning;
 
     bool _saving;
 

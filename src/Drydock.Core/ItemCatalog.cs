@@ -114,8 +114,8 @@ public sealed class ItemCatalog
             .Where(f => Path.GetFileName(f).Contains("icon", StringComparison.OrdinalIgnoreCase)).ToList();
         var item = Path.GetFileNameWithoutExtension(defFile);
         return named.FirstOrDefault(f => item.Contains(Path.GetFileNameWithoutExtension(f).Replace("_Icon", "", StringComparison.OrdinalIgnoreCase), StringComparison.OrdinalIgnoreCase))
-            // several icons and none named for this item: guessing would give every datapad the encrypted one
-            ?? (named.Count == 1 ? named[0] : null)
+            // none named for this item: the shortest name is the most general picture, a plain datapad over the encrypted one
+            ?? named.OrderBy(f => Path.GetFileName(f).Length).FirstOrDefault()
             ?? (inSubfolders.Count == 1 ? inSubfolders[0] : null);
     }
 

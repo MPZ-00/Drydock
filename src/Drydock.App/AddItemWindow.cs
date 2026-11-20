@@ -13,7 +13,7 @@ sealed class AddItemWindow : Window
 {
     readonly MainViewModel _vm;
     readonly TextBox _search = new() { Margin = new Thickness(0, 0, 0, 8) };
-    readonly ListBox _items = new() { Height = 260, DisplayMemberPath = nameof(ItemInfo.Name) };
+    readonly ListBox _items = new() { Height = 320, ItemTemplate = ItemLook() };
     readonly TextBox _amount = new() { Text = "1", Width = 100, HorizontalAlignment = HorizontalAlignment.Left };
     readonly StackPanel _statePanel = new() { Margin = new Thickness(0, 12, 0, 0), Visibility = Visibility.Collapsed };
     readonly RadioButton _new = new() { Content = "New (the game's default, a full cell or magazine)", IsChecked = true, GroupName = "state" };
@@ -26,6 +26,32 @@ sealed class AddItemWindow : Window
     readonly TextBlock _error = new() { Foreground = System.Windows.Media.Brushes.Firebrick, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
 
     public AddChoice? Result { get; private set; }
+
+    // the same picture, name and dimmer key as the pane, so an item can be found by its look
+    static DataTemplate ItemLook()
+    {
+        var row = new FrameworkElementFactory(typeof(StackPanel));
+        row.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+        row.SetValue(MarginProperty, new Thickness(0, 1, 0, 1));
+        var icon = new FrameworkElementFactory(typeof(Image));
+        icon.SetBinding(Image.SourceProperty, new System.Windows.Data.Binding(nameof(ItemInfo.Icon)) { Converter = new IconConverter() });
+        icon.SetValue(WidthProperty, 28.0);
+        icon.SetValue(HeightProperty, 28.0);
+        icon.SetValue(MarginProperty, new Thickness(0, 0, 8, 0));
+        var text = new FrameworkElementFactory(typeof(StackPanel));
+        text.SetValue(VerticalAlignmentProperty, VerticalAlignment.Center);
+        var name = new FrameworkElementFactory(typeof(TextBlock));
+        name.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding(nameof(ItemInfo.Name)));
+        var key = new FrameworkElementFactory(typeof(TextBlock));
+        key.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding(nameof(ItemInfo.Key)));
+        key.SetValue(TextBlock.FontSizeProperty, 11.0);
+        key.SetValue(OpacityProperty, 0.6);
+        text.AppendChild(name);
+        text.AppendChild(key);
+        row.AppendChild(icon);
+        row.AppendChild(text);
+        return new DataTemplate { VisualTree = row };
+    }
 
     public AddItemWindow(MainViewModel vm)
     {

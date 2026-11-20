@@ -62,7 +62,9 @@ public partial class MainWindow : Window
 
     bool _saving;
 
-    async void OnSave(object sender, RoutedEventArgs e)
+    async void OnSave(object sender, RoutedEventArgs e) => await SaveOnce();
+
+    async Task SaveOnce()
     {
         if (_saving)
             return;
@@ -75,6 +77,25 @@ public partial class MainWindow : Window
         {
             _saving = false;
         }
+    }
+
+    async void OnStartGame(object sender, RoutedEventArgs e)
+    {
+        if (_vm.PendingCount > 0)
+        {
+            var answer = MessageBox.Show(this, $"You have {_vm.PendingCount} unsaved changes. Save them before the game starts?",
+                "Drydock", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+            if (answer == MessageBoxResult.Cancel)
+                return;
+            if (answer == MessageBoxResult.Yes)
+            {
+                await SaveOnce();
+                // a cancelled or failed save keeps the changes, and the game would load the old file
+                if (_vm.PendingCount > 0)
+                    return;
+            }
+        }
+        AboutWindow.Open(this, AboutInfo.SteamLaunchUrl);
     }
 
     async Task Save()

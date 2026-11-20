@@ -38,6 +38,20 @@ public class TreeBuilderTests
     }
 
     [Fact]
+    public void A_block_with_one_inventory_is_a_leaf_whatever_the_slot_is_called()
+    {
+        var ejector = Inv("Connector", "ejector");
+        var ship = new ObjectView("Grasshopper", ObjectKind.Ship, false, true, [ejector, Inv("O2/H2 Generator", "input", rows: 0), Inv("O2/H2 Generator", "output")]);
+        var node = Node(TreeBuilder.Build([ship], false, "", new HashSet<int>()), "Grasshopper (ship)");
+
+        var connector = Node(node.Children, "Connector");
+        Assert.Same(ejector, connector.Inventory);
+        Assert.Empty(connector.Children);
+        // the hidden empty input still makes the generator two inventories, so its slot names stay
+        Assert.Equal(["output"], Node(node.Children, "O2/H2 Generator").Children.Select(c => c.Label));
+    }
+
+    [Fact]
     public void Player_slots_sit_under_the_player_and_stay_when_empty()
     {
         var player = Node(TreeBuilder.Build(World, false, "", new HashSet<int>()), "Player");

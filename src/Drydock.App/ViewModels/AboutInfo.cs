@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
+using System.Windows.Media.Imaging;
 using Drydock.Core;
 
 namespace Drydock.App.ViewModels;
@@ -14,6 +15,20 @@ public static class AboutInfo
     public const string RepoUrl = "https://github.com/MPZ-00/Drydock";
     public const string IssuesUrl = RepoUrl + "/issues";
     public const string LicenseUrl = RepoUrl + "/blob/master/LICENSE";
+
+    /// <summary>Starts Space Engineers 2 through Steam, the same as its Play button.</summary>
+    public const string SteamLaunchUrl = "steam://rungameid/1133870";
+
+    /// <summary>The app logo, built into the exe so About works even from a partial copy.</summary>
+    public static BitmapSource? Logo()
+    {
+        using var stream = typeof(AboutInfo).Assembly.GetManifestResourceStream("Drydock.png");
+        if (stream == null)
+            return null;
+        using var bytes = new MemoryStream();
+        stream.CopyTo(bytes);
+        return IconCache.Decode(bytes.ToArray());
+    }
 
     public static string AppVersion =>
         Assembly.GetExecutingAssembly().GetName().Version is { } v ? $"{v.Major}.{v.Minor}.{v.Build}" : "unknown";

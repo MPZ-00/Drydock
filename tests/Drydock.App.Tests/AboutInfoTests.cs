@@ -21,6 +21,14 @@ public class AboutInfoTests
         Assert.Equal("Drydock couldn't read the game's version.", AboutInfo.GameVersionNote(null));
 
     [Fact]
+    public void Start_game_goes_through_steam() =>
+        Assert.Equal("steam://rungameid/1133870", AboutInfo.SteamLaunchUrl);
+
+    [Fact]
+    public void The_logo_is_built_into_the_app() =>
+        Assert.NotNull(AboutInfo.Logo());
+
+    [Fact]
     public void Links_point_to_the_repo() =>
         Assert.Equal("https://github.com/MPZ-00/Drydock/issues", AboutInfo.IssuesUrl);
 }
