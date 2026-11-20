@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3 (2026-11-21)
+- Pictures for Titanium Blades, Turbine Blades, Construction Component and Stone, matched by near names. 100 of 123 items have one now
+- Screenshots in the README
+
 ## 0.3.2 (2026-11-21)
 - Remove works on every row, so consumables, datapads and other totals go away in one click
 - Clicking a block shows all its inventories at once, like a smelter's input and output, each with its own bars and Add item button
