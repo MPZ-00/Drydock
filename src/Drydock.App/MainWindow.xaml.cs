@@ -237,6 +237,9 @@ public partial class MainWindow : Window
             await _vm.ApplyAsync(new SetTotal(target, choice.Item.Guid, _vm.CurrentTotal(target, choice.Item.Guid) + choice.Amount));
     }
 
+    void OnAbout(object sender, RoutedEventArgs e) =>
+        new AboutWindow(Path.GetDirectoryName(Settings.UserPath)!, _vm.Backups.Root) { Owner = this, Icon = Icon }.ShowDialog();
+
     void OnTheme(object sender, RoutedEventArgs e)
     {
         var theme = (string)((MenuItem)sender).Tag;
